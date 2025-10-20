@@ -1,0 +1,5 @@
+[14-Sep-2025 13:46:02 Etc/UTC] PHP Warning:  require_once(/var/www/bulaservices/data/www/bulaservicesgsc.com/bulaservicesgsc/userbulaservices/server/db_connection.php): Failed to open stream: No such file or directory in /var/www/bulaservices/data/www/bulaservicesgsc.com/bulaservicesgsc/userbulaservices/server/gym_reservation_function.php on line 11
+[14-Sep-2025 13:46:02 Etc/UTC] PHP Fatal error:  Uncaught Error: Failed opening required '/var/www/bulaservices/data/www/bulaservicesgsc.com/bulaservicesgsc/userbulaservices/server/db_connection.php' (include_path='.:/usr/share/php') in /var/www/bulaservices/data/www/bulaservicesgsc.com/bulaservicesgsc/userbulaservices/server/gym_reservation_function.php:11
+Stack trace:
+#0 {main}
+  thrown in /var/www/bulaservices/data/www/bulaservicesgsc.com/bulaservicesgsc/userbulaservices/server/gym_reservation_function.php on line 11

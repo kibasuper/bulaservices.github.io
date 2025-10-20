@@ -1,0 +1,10 @@
+# Never execute PHP in uploads
+php_flag engine off
+
+<FilesMatch "\.(php|php\d?|phtml)$">
+    Deny from all
+</FilesMatch>
+
+# Serve files as static
+Options -ExecCGI
+AddType text/plain .php .phtml .php3 .php4 .php5 .php7 .php8

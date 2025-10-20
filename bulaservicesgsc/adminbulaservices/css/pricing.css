@@ -1,0 +1,178 @@
+/* ==========
+   Base
+========== */
+:root {
+  --brand: #4361ee;
+  --ink: #1f2937;
+  --muted: #6b7280;
+  --card-border: #e5e7eb;
+  --bg-soft: #f8fafc;
+}
+
+* { box-sizing: border-box; }
+html, body {
+  height: 100%;
+}
+body {
+  background-color: #f5f7fa;
+  color: #333;
+  line-height: 1.6;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol";
+}
+
+/* ==========
+   Header (consistent with Transaction/Gym)
+========== */
+.app-header {
+  background: #fff;
+  box-shadow: 0 2px 10px rgba(0,0,0,.08);
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 1030;
+}
+.header-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 0;
+}
+.app-header h1 {
+  margin: 0;
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+}
+.app-header h1 i { color: var(--brand); }
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+.dashboard-link {
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+  text-decoration: none;
+  font-weight: 600;
+  color: var(--brand);
+  background: rgba(67,97,238,.08);
+  padding: .5rem .75rem;
+  border-radius: 10px;
+  transition: background .2s ease, transform .2s ease;
+}
+.dashboard-link:hover {
+  background: rgba(67,97,238,.15);
+  transform: translateY(-1px);
+}
+.user-menu {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  background: var(--bg-soft);
+  border: 1px solid var(--card-border);
+  padding: .45rem .75rem;
+  border-radius: 10px;
+  font-weight: 600;
+  color: #374151;
+}
+.user-menu i { color: var(--muted); }
+
+/* Avoid content under fixed header */
+.page-wrap { padding-top: 90px; }
+
+/* ==========
+   Section headings & helpers
+========== */
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  margin: 0 0 .75rem 0;
+  font-weight: 700;
+  color: var(--ink);
+}
+.section-title .muted {
+  font-weight: 600;
+  color: var(--muted);
+  font-size: .95rem;
+}
+.hint { color: var(--muted); font-size: .9rem; }
+.divider { height: 1px; background: var(--card-border); margin: 1rem 0; }
+
+/* ==========
+   Cards
+========== */
+.card { border-color: var(--card-border); }
+.card-header {
+  background: #fff;
+  border-bottom: 1px solid var(--card-border);
+  font-weight: 700;
+}
+.card-sub { color: var(--muted); font-size: .9rem; }
+
+/* ==========
+   Certificates table
+========== */
+.table td input { max-width: 160px; }
+.code-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  background: #eef2ff;
+  color: #3730a3;
+  border: 1px solid #c7d2fe;
+  padding: .25rem .5rem;
+  border-radius: 8px;
+  font-weight: 600;
+}
+.row-actions .btn { min-width: 44px; }
+
+/* ==========
+   Gym rate inputs
+========== */
+.input-group-text { font-weight: 600; }
+
+/* ==========
+   Footer
+========== */
+.foot-muted { color: var(--muted); font-size: .85rem; }
+
+/* ==========
+   Legacy styles you shared (trimmed & aligned so they won’t fight Bootstrap)
+   — kept only the useful bits you might still rely on elsewhere
+========== */
+.pricing-section {
+  background: #fff;
+  border-radius: 10px;
+  padding: 25px;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+  margin-bottom: 25px;
+}
+
+/* Toast (optional utility) */
+.toast-lite {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  padding: 14px 16px;
+  background-color: #43a047;
+  color: #fff;
+  border-radius: 8px;
+  box-shadow: 0 4px 6px rgba(0,0,0,.12);
+  opacity: 0;
+  transform: translateY(10px);
+  transition: all .25s ease;
+  z-index: 1100;
+}
+.toast-lite.show { opacity: 1; transform: translateY(0); }
+.toast-lite.error { background-color: #e53935; }
+
+/* Responsive tweaks */
+@media (max-width: 768px) {
+  .header-content { flex-direction: column; gap: .75rem; }
+  .page-wrap { padding-top: 96px; }
+}

@@ -1,0 +1,113 @@
+
+[11-Oct-2025 14:33:13 Etc/UTC] User 4 logged in successfully from 124.217.126.251
+[12-Oct-2025 05:53:36 Etc/UTC] register_api error: SQLSTATE[21S01]: Insert value list does not match column list: 1136 Column count doesn't match value count at row 1
+[12-Oct-2025 05:54:26 Etc/UTC] register_api error: SQLSTATE[21S01]: Insert value list does not match column list: 1136 Column count doesn't match value count at row 1
+[12-Oct-2025 07:32:04 Etc/UTC] register_api error: SQLSTATE[21S01]: Insert value list does not match column list: 1136 Column count doesn't match value count at row 1
+[12-Oct-2025 13:21:59 Etc/UTC] New user registered: ID 1, Email: peterjhondogario@gmail.com
+[13-Oct-2025 04:01:47 Etc/UTC] MAIL ERROR: SMTP Error: Could not connect to SMTP host. Failed to connect to server SMTP server error: Failed to connect to server Additional SMTP info: php_network_getaddresses: getaddrinfo for mail.bulaservicesgsc.com failed: Name or service not known
+[13-Oct-2025 04:01:47 Etc/UTC] Verification email send failure (tos_accept): espinosa.jericho@gmail.com => SMTP Error: Could not connect to SMTP host. Failed to connect to server SMTP server error: Failed to connect to server Additional SMTP info: php_network_getaddresses: getaddrinfo for mail.bulaservicesgsc.com failed: Name or service not known
+[13-Oct-2025 09:06:57 Etc/UTC] verify.php: token exists but expired id=6 exp=2025-10-13 09:36:31
+[13-Oct-2025 09:07:09 Etc/UTC] verify.php: token exists but expired id=6 exp=2025-10-13 09:36:31
+[13-Oct-2025 09:09:22 Etc/UTC] verify.php: token not found in DB
+[13-Oct-2025 09:10:47 Etc/UTC] verify.php: token exists but expired id=6 exp=2025-10-13 09:36:31
+[13-Oct-2025 09:11:00 Etc/UTC] verify.php: token exists but expired id=6 exp=2025-10-13 09:36:31
+[13-Oct-2025 09:11:13 Etc/UTC] verify.php: token exists but expired id=6 exp=2025-10-13 09:36:31
+[13-Oct-2025 09:11:20 Etc/UTC] verify.php: token exists but expired id=6 exp=2025-10-13 09:36:31
+[13-Oct-2025 09:15:33 Etc/UTC] verify.php: token exists but expired id=6 exp=2025-10-13 09:36:31
+[13-Oct-2025 11:57:27 Etc/UTC] PAGE session_id=5mof3f5paunaqld19d2vphh8lv uid=9
+[13-Oct-2025 12:10:30 Etc/UTC] PAGE session_id=5mof3f5paunaqld19d2vphh8lv uid=9
+[13-Oct-2025 12:10:46 Etc/UTC] PAGE session_id=5mof3f5paunaqld19d2vphh8lv uid=9
+[13-Oct-2025 12:49:32 Etc/UTC] register_api error: Call to undefined function hashPassword()
+[13-Oct-2025 12:51:18 Etc/UTC] register_api error: Call to undefined function hashPassword()
+[13-Oct-2025 12:53:31 Etc/UTC] register_api error: Call to undefined function hashPassword()
+[14-Oct-2025 05:23:30 Etc/UTC] verify.php: token exists but already consumed id=3
+[14-Oct-2025 05:23:31 Etc/UTC] verify.php: token exists but already consumed id=3
+[14-Oct-2025 06:36:03 Etc/UTC] serve_upload.php DEBUG: Tried path 
+[14-Oct-2025 06:36:09 Etc/UTC] serve_upload.php DEBUG: Tried path 
+[14-Oct-2025 06:36:16 Etc/UTC] serve_upload.php DEBUG: Tried path 
+[14-Oct-2025 06:36:34 Etc/UTC] serve_upload.php DEBUG: Tried path 
+[14-Oct-2025 06:36:40 Etc/UTC] serve_upload.php DEBUG: Tried path 
+[14-Oct-2025 06:41:51 Etc/UTC] serve_upload.php DEBUG: Tried path 
+[14-Oct-2025 06:44:06 Etc/UTC] serve_upload.php DEBUG: Tried path 
+[14-Oct-2025 06:44:39 Etc/UTC] serve_upload.php DEBUG: Tried path 
+[14-Oct-2025 08:22:51 Etc/UTC] Admin login error: Invalid username or password
+[15-Oct-2025 01:48:02 Etc/UTC] Admin login error: Invalid username or password
+[15-Oct-2025 06:25:55 Etc/UTC] verify.php: token not found in DB
+[15-Oct-2025 10:21:25 Etc/UTC] verify.php: token not found in DB
+[15-Oct-2025 20:35:22 Etc/UTC] verify.php: token not found in DB
+[16-Oct-2025 00:41:06 Etc/UTC] Admin login error: Invalid username or password
+[16-Oct-2025 05:20:03 Etc/UTC] verify.php: token exists but already consumed id=3
+[16-Oct-2025 08:46:40 Etc/UTC] verify.php: token exists but already consumed id=4
+[16-Oct-2025 08:46:55 Etc/UTC] verify.php: token exists but already consumed id=4
+[16-Oct-2025 08:47:05 Etc/UTC] verify.php: token exists but already consumed id=4
+[17-Oct-2025 02:12:41 Etc/UTC] Gymback fatal: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'user_id' in 'field list'
+[17-Oct-2025 02:12:46 Etc/UTC] Gymback fatal: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'user_id' in 'field list'
+[17-Oct-2025 02:13:02 Etc/UTC] Gymback fatal: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'user_id' in 'field list'
+[17-Oct-2025 15:05:16 Etc/UTC] serve_upload_user DEBUG: Requested 'uploads/profile_pictures/96aa2acb58083a41b932e613b49a559d.jpg' resolved to '' (not found)
+[17-Oct-2025 15:05:31 Etc/UTC] serve_upload_user DEBUG: Requested 'uploads/profile_pictures/96aa2acb58083a41b932e613b49a559d.jpg' resolved to '' (not found)
+[17-Oct-2025 15:05:43 Etc/UTC] serve_upload_user DEBUG: Requested 'uploads/profile_pictures/96aa2acb58083a41b932e613b49a559d.jpg' resolved to '' (not found)
+[17-Oct-2025 15:05:45 Etc/UTC] serve_upload_user DEBUG: Requested 'uploads/profile_pictures/96aa2acb58083a41b932e613b49a559d.jpg' resolved to '' (not found)
+[17-Oct-2025 15:05:51 Etc/UTC] serve_upload_user DEBUG: Requested 'uploads/profile_pictures/96aa2acb58083a41b932e613b49a559d.jpg' resolved to '' (not found)
+[17-Oct-2025 15:08:18 Etc/UTC] serve_upload_user DEBUG: Requested 'uploads/profile_pictures/96aa2acb58083a41b932e613b49a559d.jpg' resolved to '' (not found)
+[17-Oct-2025 15:09:39 Etc/UTC] serve_upload_user DEBUG: Requested 'uploads/profile_pictures/96aa2acb58083a41b932e613b49a559d.jpg' resolved to '' (not found)
+[19-Oct-2025 06:15:56 Etc/UTC] Admin login error: Invalid username or password
+[19-Oct-2025 06:16:06 Etc/UTC] Admin login error: Invalid username or password
+[19-Oct-2025 06:16:22 Etc/UTC] Admin login error: Invalid username or password
+[19-Oct-2025 06:16:24 Etc/UTC] Admin login error: Invalid username or password
+[19-Oct-2025 06:16:25 Etc/UTC] Admin login error: Invalid username or password
+[19-Oct-2025 06:16:25 Etc/UTC] Admin login error: Invalid username or password
+[19-Oct-2025 06:17:04 Etc/UTC] Admin login error: Invalid username or password
+[19-Oct-2025 06:17:17 Etc/UTC] Admin login error: Invalid username or password
+[19-Oct-2025 18:05:28 Etc/UTC] Admin login error: Invalid username or password
+[19-Oct-2025 18:05:35 Etc/UTC] Admin login error: Invalid username or password
+[19-Oct-2025 18:05:36 Etc/UTC] Admin login error: Invalid username or password
+[19-Oct-2025 18:05:37 Etc/UTC] Admin login error: Invalid username or password
+[19-Oct-2025 18:05:37 Etc/UTC] Admin login error: Invalid username or password
+[19-Oct-2025 18:05:45 Etc/UTC] Admin login error: Invalid username or password
+[19-Oct-2025 18:05:46 Etc/UTC] Admin login error: Invalid username or password
+[19-Oct-2025 18:05:46 Etc/UTC] Admin login error: Invalid username or password
+[19-Oct-2025 18:05:50 Etc/UTC] Admin login error: Invalid username or password
+[19-Oct-2025 18:05:51 Etc/UTC] Admin login error: Invalid username or password
+[19-Oct-2025 18:06:03 Etc/UTC] Admin login error: Invalid username or password
+[19-Oct-2025 18:06:04 Etc/UTC] Admin login error: Invalid username or password
+[19-Oct-2025 18:06:04 Etc/UTC] Admin login error: Invalid username or password
+[19-Oct-2025 18:06:04 Etc/UTC] Admin login error: Invalid username or password
+[19-Oct-2025 18:06:04 Etc/UTC] Admin login error: Invalid username or password
+[19-Oct-2025 18:06:09 Etc/UTC] Admin login error: Invalid username or password
+[19-Oct-2025 18:06:15 Etc/UTC] Admin login error: Invalid username or password
+[19-Oct-2025 18:06:16 Etc/UTC] Admin login error: Invalid username or password
+[19-Oct-2025 18:06:16 Etc/UTC] Admin login error: Invalid username or password
+[19-Oct-2025 18:06:17 Etc/UTC] Admin login error: Invalid username or password
+[19-Oct-2025 18:06:17 Etc/UTC] Admin login error: Invalid username or password
+[19-Oct-2025 18:06:17 Etc/UTC] Admin login error: Invalid username or password
+[19-Oct-2025 18:06:17 Etc/UTC] Admin login error: Invalid username or password
+[19-Oct-2025 18:06:17 Etc/UTC] Admin login error: Invalid username or password
+[19-Oct-2025 18:06:18 Etc/UTC] Admin login error: Invalid username or password
+[19-Oct-2025 18:06:18 Etc/UTC] Admin login error: Invalid username or password
+[19-Oct-2025 18:06:18 Etc/UTC] Admin login error: Invalid username or password
+[19-Oct-2025 18:06:46 Etc/UTC] Admin login error: Invalid username or password
+[19-Oct-2025 18:06:46 Etc/UTC] Admin login error: Invalid username or password
+[19-Oct-2025 18:26:01 Etc/UTC] Login error: SQLSTATE[HY093]: Invalid parameter number
+[19-Oct-2025 18:26:11 Etc/UTC] Login error: SQLSTATE[HY093]: Invalid parameter number
+[19-Oct-2025 18:26:18 Etc/UTC] Login error: SQLSTATE[HY093]: Invalid parameter number
+[19-Oct-2025 18:29:08 Etc/UTC] Login error: SQLSTATE[HY093]: Invalid parameter number
+[19-Oct-2025 18:30:52 Etc/UTC] Login error: SQLSTATE[HY093]: Invalid parameter number
+[19-Oct-2025 18:34:50 Etc/UTC] Login error: SQLSTATE[HY093]: Invalid parameter number in /var/www/bulaservices/data/www/bulaservicesgsc.com/bulaservicesgsc/adminbulaservices/php/login.php:34
+[19-Oct-2025 18:34:54 Etc/UTC] Login error: SQLSTATE[HY093]: Invalid parameter number in /var/www/bulaservices/data/www/bulaservicesgsc.com/bulaservicesgsc/adminbulaservices/php/login.php:34
+[19-Oct-2025 18:35:00 Etc/UTC] Login error: SQLSTATE[HY093]: Invalid parameter number in /var/www/bulaservices/data/www/bulaservicesgsc.com/bulaservicesgsc/adminbulaservices/php/login.php:34
+[19-Oct-2025 18:36:43 Etc/UTC] Login error: SQLSTATE[HY093]: Invalid parameter number in /var/www/bulaservices/data/www/bulaservicesgsc.com/bulaservicesgsc/adminbulaservices/php/login.php:34
+[19-Oct-2025 18:39:59 Etc/UTC] Login Error: SQLSTATE[HY093]: Invalid parameter number in /var/www/bulaservices/data/www/bulaservicesgsc.com/bulaservicesgsc/adminbulaservices/php/login.php:39
+[19-Oct-2025 18:41:21 Etc/UTC] Login Error: SQLSTATE[HY093]: Invalid parameter number in /var/www/bulaservices/data/www/bulaservicesgsc.com/bulaservicesgsc/adminbulaservices/php/login.php:40
+[19-Oct-2025 18:41:27 Etc/UTC] Login Error: SQLSTATE[HY093]: Invalid parameter number in /var/www/bulaservices/data/www/bulaservicesgsc.com/bulaservicesgsc/adminbulaservices/php/login.php:40
+[19-Oct-2025 18:56:43 Etc/UTC] Change password failed: Missing fields.
+[19-Oct-2025 18:57:04 Etc/UTC] Change password failed: Missing fields.
+[19-Oct-2025 18:57:05 Etc/UTC] Change password failed: Missing fields.
+[19-Oct-2025 18:57:05 Etc/UTC] Change password failed: Missing fields.
+[19-Oct-2025 18:57:06 Etc/UTC] Change password failed: Missing fields.
+[19-Oct-2025 18:57:06 Etc/UTC] Change password failed: Missing fields.
+[19-Oct-2025 18:57:06 Etc/UTC] Change password failed: Missing fields.
+[19-Oct-2025 18:57:06 Etc/UTC] Change password failed: Missing fields.
+[20-Oct-2025 02:21:59 Etc/UTC] [LOGIN] SQLSTATE[HY093]: Invalid parameter number @ /var/www/bulaservices/data/www/bulaservicesgsc.com/bulaservicesgsc/adminbulaservices/php/login.php:37
+[20-Oct-2025 02:25:32 Etc/UTC] [LOGIN] SQLSTATE[HY093]: Invalid parameter number @ /var/www/bulaservices/data/www/bulaservicesgsc.com/bulaservicesgsc/adminbulaservices/php/login.php:42
+[20-Oct-2025 11:17:54 Asia/Manila] get_transactions fatal: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'a_rel_sr.first_name' in 'field list'
+[20-Oct-2025 11:18:01 Asia/Manila] get_transactions fatal: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'a_rel_sr.first_name' in 'field list'
