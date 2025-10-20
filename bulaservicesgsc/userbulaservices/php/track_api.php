@@ -201,7 +201,7 @@ function mapReservationLifecycle(array $r): string {
   return 'completed';
 }
 
-/* -------- certificates lifecycle mapping (NEW) -------- */
+/* -------- certificates lifecycle mapping -------- */
 function computeServiceStatusSR(array $r): string {
   $raw = strtolower(trim((string)($r['status'] ?? '')));
 
@@ -250,7 +250,7 @@ if ($me['name'] === '' || $me['phone'] === '' || $me['email'] === '') {
 $items = [];
 $debug = ['session'=>$me];
 
-/** 7) SERVICE REQUESTS (certificates) */
+/** 7) SERVICE REQUESTS (certificates) — NOW WITH ACTORS */
 try {
   $sr_has_user_id        = hasColumn($pdo,'service_requests','user_id');
   $sr_has_requester_name = hasColumn($pdo,'service_requests','requester_name') || hasColumn($pdo,'service_requests','requestor_name');
@@ -261,15 +261,60 @@ try {
   ]);
 
   $joinUsers = $sr_has_user_id ? "LEFT JOIN users u ON u.id = sr.user_id" : "LEFT JOIN users u ON 1=0";
-  $sql = "SELECT sr.*, 
-                 u.first_name AS u_first_name, 
-                 u.last_name  AS u_last_name, 
-                 u.contact_number AS u_contact, 
-                 u.email AS u_email
+
+  // Latest payment per service_request (by max payment_id — aligns with your process_payment implementation)
+  $latestPaySR = "
+    LEFT JOIN (
+      SELECT t.request_id,
+             p.id AS pay_id,
+             p.receipt_number,
+             p.cashier_id,
+             COALESCE(p.paid_at, p.created_at) AS pay_ts
+      FROM (
+        SELECT pi.request_id, MAX(pi.payment_id) AS payment_id
+        FROM payment_items pi
+        GROUP BY pi.request_id
+      ) t
+      JOIN payments p ON p.id = t.payment_id
+    ) lpsr ON lpsr.request_id = sr.id
+  ";
+
+  // Admin joins for approver / cashier / releaser
+  $joinAdmins = "
+    LEFT JOIN admins ap ON ap.admin_id = sr.approved_by
+    LEFT JOIN admins ca ON ca.admin_id = lpsr.cashier_id
+    LEFT JOIN admins ra ON ra.admin_id = sr.claimed_by
+  ";
+
+  $sql = "SELECT sr.*,
+                 u.first_name  AS u_first_name,
+                 u.last_name   AS u_last_name,
+                 u.contact_number AS u_contact,
+                 u.email       AS u_email,
+
+                 -- approver
+                 ap.first_name AS ap_first_name,
+                 ap.last_name  AS ap_last_name,
+
+                 -- cashier via latest payment
+                 lpsr.pay_id,
+                 lpsr.receipt_number,
+                 lpsr.cashier_id,
+                 lpsr.pay_ts,
+                 ca.first_name AS ca_first_name,
+                 ca.last_name  AS ca_last_name,
+
+                 -- releaser
+                 ra.first_name AS ra_first_name,
+                 ra.last_name  AS ra_last_name
+
           FROM service_requests sr
           $joinUsers
+          $latestPaySR
+          $joinAdmins
           $srOrder
           LIMIT 500";
+
   $rows = $pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
   $matched = 0;
@@ -322,7 +367,6 @@ try {
     if (!empty($r['rejected_reason'])) $timeline[] = ['date'=>$updated, 'content'=> 'Rejected: '.(string)$r['rejected_reason']];
 
     $stype = (string)($r['service_type'] ?? 'Service Request');
-    // normalize some common names
     $pretty = [
       'barangay_clearance' => 'Barangay Clearance',
       'indigency'          => 'Certificate of Indigency',
@@ -332,7 +376,24 @@ try {
     ];
     $type  = $pretty[strtolower($stype)] ?? ucwords(str_replace(['_','-'],' ', $stype));
 
-    $items[] = [
+    // ===== Actors (approver/cashier/releaser) =====
+    $approvedByName = trim(($r['ap_first_name'] ?? '').' '.($r['ap_last_name'] ?? '')) ?: null;
+    $approvedDate   = toDateStr($r['approved_date'] ?? null);
+
+    $cashierName    = trim(($r['ca_first_name'] ?? '').' '.($r['ca_last_name'] ?? '')) ?: null;
+    $cashierDate    = toDateStr($r['pay_ts'] ?? null);
+    $receipt        = (string)($r['receipt_number'] ?? '');
+
+    $releasedName   = trim(($r['ra_first_name'] ?? '').' '.($r['ra_last_name'] ?? '')) ?: null;
+    $releasedDate   = toDateStr($r['claimed_at'] ?? null);
+
+    $actors = [
+      'approved_by' => $approvedByName ? ['name'=>$approvedByName, 'date'=>$approvedDate] : null,
+      'processed_by'=> $cashierName    ? ['name'=>$cashierName,   'date'=>$cashierDate, 'receipt'=>$receipt] : null,
+      'released_by' => $releasedName   ? ['name'=>$releasedName,  'date'=>$releasedDate] : null,
+    ];
+
+    $item = [
       'id'        => (int)$r['id'],
       'type'      => $type ?: 'Service Request',
       'status'    => $status,      // waiting_approval | approved | paid | completed | rejected
@@ -344,7 +405,9 @@ try {
       'estimated' => $estimated,
       'documents' => $docs,
       'timeline'  => $timeline,
+      'actors'    => $actors,      // <— NEW
     ];
+    $items[] = $item;
   }
 
   if ($DEBUG) {
@@ -352,19 +415,14 @@ try {
       'order_by' => $srOrder,
       'read'     => count($rows),
       'matched'  => $matched,
-      'have_cols'=> [
-        'user_id'=>$sr_has_user_id,
-        'requester_name'=>hasColumn($pdo,'service_requests','requester_name'),
-        'requestor_name'=>hasColumn($pdo,'service_requests','requestor_name'),
-        'contact_number'=>$sr_has_contact_number,
-      ],
+      'actors'   => true,
     ];
   }
 } catch (Throwable $e) {
   if ($DEBUG) $debug['service_requests_error'] = $e->getMessage();
 }
 
-/** 8) RESERVATIONS (gym) */
+/** 8) RESERVATIONS (gym) — NOW WITH CASHIER (Processed by) */
 try {
   $rv_has_user_id = hasColumn($pdo,'reservations','user_id');
 
@@ -372,17 +430,49 @@ try {
     'claimed_at','paid_at','reservation_date','created_at','updated_at'
   ]);
 
-  // If we have user_id, join users so we can match by users.{name, phone, email} too
   $joinUsers = $rv_has_user_id ? "LEFT JOIN users u ON u.id = r.user_id" : "LEFT JOIN users u ON 1=0";
-  $sql = "SELECT r.*, 
-                 u.first_name AS u_first_name, 
-                 u.last_name  AS u_last_name, 
+
+  // Latest payment per reservation
+  $latestPayRV = "
+    LEFT JOIN (
+      SELECT t.request_id,
+             p.id AS pay_id,
+             p.receipt_number,
+             p.cashier_id,
+             COALESCE(p.paid_at, p.created_at) AS pay_ts
+      FROM (
+        SELECT pi.request_id, MAX(pi.payment_id) AS payment_id
+        FROM payment_items pi
+        GROUP BY pi.request_id
+      ) t
+      JOIN payments p ON p.id = t.payment_id
+    ) lpr ON lpr.request_id = r.id
+  ";
+
+  $joinAdmins = "
+    LEFT JOIN admins ca ON ca.admin_id = lpr.cashier_id
+  ";
+
+  $sql = "SELECT r.*,
+                 u.first_name AS u_first_name,
+                 u.last_name  AS u_last_name,
                  u.contact_number AS u_contact,
-                 u.email AS u_email
+                 u.email AS u_email,
+
+                 lpr.pay_id,
+                 lpr.receipt_number,
+                 lpr.cashier_id,
+                 lpr.pay_ts,
+                 ca.first_name AS ca_first_name,
+                 ca.last_name  AS ca_last_name
+
           FROM reservations r
           $joinUsers
+          $latestPayRV
+          $joinAdmins
           $rvOrder
           LIMIT 500";
+
   $rows = $pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
   $matched = 0;
@@ -424,7 +514,7 @@ try {
     $timeline = [];
     if (!empty($r['notes'])) $timeline[] = ['date'=>$updated, 'content'=>(string)$r['notes']];
 
-    // Time slots pretty print (JSON or string)
+    // Time slots pretty print (JSON or string) — keep existing
     $slotsNice = '';
     if (!empty($r['time_slots'])) {
       $dec = json_decode((string)$r['time_slots'], true);
@@ -448,6 +538,17 @@ try {
     $activity = (string)($r['activity'] ?? '');
     $type = 'Gym Reservation'.($activity !== '' ? ' - '.ucwords($activity) : '');
 
+    // Actors (only cashier is available out-of-the-box for reservations)
+    $cashierName  = trim(($r['ca_first_name'] ?? '').' '.($r['ca_last_name'] ?? '')) ?: null;
+    $cashierDate  = toDateStr($r['pay_ts'] ?? null);
+    $receipt      = (string)($r['receipt_number'] ?? '');
+
+    $actors = [
+      'approved_by' => null, // unless you later add approved_by/approved_date to reservations
+      'processed_by'=> $cashierName ? ['name'=>$cashierName, 'date'=>$cashierDate, 'receipt'=>$receipt] : null,
+      'released_by' => null, // release is not tracked for gym by default
+    ];
+
     $items[] = [
       'id'        => (int)$r['id'],
       'type'      => $type,
@@ -460,6 +561,7 @@ try {
       'estimated' => toDateStr($r['reservation_date'] ?? null),
       'documents' => [],
       'timeline'  => $timeline,
+      'actors'    => $actors,      // <— NEW
     ];
   }
 
@@ -468,7 +570,7 @@ try {
       'order_by' => $rvOrder,
       'read'     => count($rows),
       'matched'  => $matched,
-      'have_cols'=> ['user_id'=>$rv_has_user_id],
+      'actors'   => true,
     ];
   }
 } catch (Throwable $e) {

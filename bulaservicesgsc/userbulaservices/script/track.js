@@ -65,6 +65,19 @@ async function loadRequests() {
   renderRequests();
 }
 
+// ---------------- helpers ----------------
+function escapeHtml(str) {
+  return String(str ?? '').replace(/[&<>"']/g, m => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[m]));
+}
+
+// date-only nice (e.g., "Oct 10, 2025")
+function dateOnly(str) {
+  if (!str) return '';
+  const d = new Date(str);
+  if (isNaN(d)) return escapeHtml(str);
+  return d.toLocaleDateString('en-PH', { dateStyle: 'medium' });
+}
+
 // ---------------- RENDER ----------------
 function renderRequests(filterStatus = "All Statuses", searchTerm = "", sortBy = "Newest First") {
   const container = document.getElementById('requests-list');
@@ -96,7 +109,7 @@ function renderRequests(filterStatus = "All Statuses", searchTerm = "", sortBy =
       data.sort((a,b)=> (b.type||'').localeCompare(a.type||''));
       break;
     case "Status":
-      const rank = s => ({waiting_approval:1, processing:2, paid:3, completed:4, rejected:5})[(s||'').toLowerCase()] || 9;
+      const rank = s => ({waiting_approval:1, approved:2, processing:3, paid:4, completed:5, rejected:6})[(s||'').toLowerCase()] || 9;
       data.sort((a,b)=> rank(a.status) - rank(b.status));
       break;
   }
@@ -116,49 +129,48 @@ function renderRequests(filterStatus = "All Statuses", searchTerm = "", sortBy =
   }
 
   const progressWidth = {
-  waiting_approval: "20%",
-  approved: "40%",
-  incoming: "65%",
-  ongoing: "85%",
-  processing: "60%",      // legacy service-requests path
-  paid: "75%",            // legacy service-requests path
-  completed: "100%",
-  rejected: "100%"
-};
+    waiting_approval: "20%",
+    approved: "40%",
+    incoming: "65%",
+    ongoing: "85%",
+    processing: "60%",
+    paid: "75%",
+    completed: "100%",
+    rejected: "100%"
+  };
 
-const statusBadgeClass = {
-  waiting_approval: "pending",
-  approved: "approved",
-  incoming: "incoming",
-  ongoing: "ongoing",
-  processing: "processing",
-  paid: "processing",
-  completed: "completed",
-  rejected: "rejected"
-};
+  const statusBadgeClass = {
+    waiting_approval: "pending",
+    approved: "approved",
+    incoming: "incoming",
+    ongoing: "ongoing",
+    processing: "processing",
+    paid: "processing",
+    completed: "completed",
+    rejected: "rejected"
+  };
 
-const statusText = {
-  waiting_approval: "Waiting for Approval",
-  approved: "Approved",
-  incoming: "Incoming",
-  ongoing: "Ongoing",
-  processing: "Processing",
-  paid: "Awaiting Release",
-  completed: "Completed",
-  rejected: "Rejected"
-};
+  const statusText = {
+    waiting_approval: "Waiting for Approval",
+    approved: "Approved",
+    incoming: "Incoming",
+    ongoing: "Ongoing",
+    processing: "Processing",
+    paid: "Awaiting Release",
+    completed: "Completed",
+    rejected: "Rejected"
+  };
 
-const progressColor = {
-  waiting_approval: "var(--secondary)",
-  approved: "var(--primary)",
-  incoming: "var(--primary)",
-  ongoing: "var(--primary)",
-  processing: "var(--primary)",
-  paid: "var(--primary)",
-  completed: "var(--success)",
-  rejected: "var(--danger)"
-};
-
+  const progressColor = {
+    waiting_approval: "var(--secondary)",
+    approved: "var(--primary)",
+    incoming: "var(--primary)",
+    ongoing: "var(--primary)",
+    processing: "var(--primary)",
+    paid: "var(--primary)",
+    completed: "var(--success)",
+    rejected: "var(--danger)"
+  };
 
   data.forEach(request => {
     const s = (request.status || 'waiting_approval').toLowerCase();
@@ -172,6 +184,34 @@ const progressColor = {
     const officer   = request.officer || 'Barangay Staff';
     const reference = request.reference || request.id || '—';
     const estimated = request.estimated || '';
+
+    // NEW: workflow actors block (from API)
+    const actors = request.actors || {};
+    const ap = actors.approved_by;
+    const pc = actors.processed_by;
+    const rl = actors.released_by;
+
+    const workflowHtml = `
+      <div class="workflow">
+        <h3>Workflow</h3>
+        <div class="workflow-grid">
+          <div class="flow-item">
+            <span class="flow-label">Approved By</span>
+            <span class="flow-value">${ap ? `${escapeHtml(ap.name)}${ap.date ? ' • ' + dateOnly(ap.date) : ''}` : '<em>— not yet</em>'}</span>
+          </div>
+          <div class="flow-item">
+            <span class="flow-label">Processed By</span>
+            <span class="flow-value">
+              ${pc ? `${escapeHtml(pc.name)}${pc.date ? ' • ' + dateOnly(pc.date) : ''}${pc.receipt ? ' • ' + escapeHtml(pc.receipt) : ''}` : '<em>— not yet</em>'}
+            </span>
+          </div>
+          <div class="flow-item">
+            <span class="flow-label">Released By</span>
+            <span class="flow-value">${rl ? `${escapeHtml(rl.name)}${rl.date ? ' • ' + dateOnly(rl.date) : ''}` : '<em>— not yet</em>'}</span>
+          </div>
+        </div>
+      </div>
+    `;
 
     const docsHtml = Array.isArray(request.documents) && request.documents.length
       ? request.documents.map(doc => `
@@ -250,6 +290,8 @@ const progressColor = {
             <h3>Processing Timeline</h3>
             ${timelineHtml}
           </div>
+
+          ${workflowHtml}
 
           <div class="request-actions">
             ${renderActionsByStatus(s)}
@@ -333,8 +375,3 @@ ${PATH_CANDIDATES.map(p => ` - ${ORIGIN}${p}`).join('\n')}
   searchInput && searchInput.addEventListener('input', rerender);
   sortSel && sortSel.addEventListener('change', rerender);
 });
-
-// small util
-function escapeHtml(str) {
-  return String(str ?? '').replace(/[&<>"']/g, m => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[m]));
-}
