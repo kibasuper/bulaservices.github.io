@@ -18,41 +18,6 @@ if (!isset($_SESSION['admin_id'])) {
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <link rel="stylesheet" href="./css/transaction.css">
-
-  <!-- modal polish (same as before) -->
-  <style>
-    .modal { display:none; position:fixed; inset:0; background:rgba(15,23,42,.55); backdrop-filter:blur(2px); z-index:1000; align-items:center; justify-content:center; }
-    .modal.show { display:flex; }
-    .modal-content { width:min(900px,94vw); border-radius:16px; background:#fff; box-shadow:0 24px 48px rgba(0,0,0,.18), 0 2px 8px rgba(0,0,0,.08); overflow:hidden; }
-    .modal-header { display:flex; align-items:center; justify-content:space-between; padding:16px 18px; border-bottom:1px solid #eef2f7; background:linear-gradient(180deg,#f7f9fc 0%,#ffffff 100%); }
-    .modal-header h2 { font-size:1.1rem; margin:0; }
-    .close-modal { border:0; background:#e5e7eb; width:36px; height:36px; border-radius:10px; display:grid; place-items:center; cursor:pointer; }
-    .close-modal:hover { background:#dfe3e8; }
-    .modal-body { padding:18px; }
-    .meta-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px 18px; }
-    .meta-item { display:flex; align-items:center; gap:8px; }
-    .meta-item .lbl { color:#6b7280; min-width:150px; font-weight:600; }
-    .meta-item .val { color:#0f172a; }
-    .badge { display:inline-flex; align-items:center; gap:6px; font-weight:700; font-size:.78rem; border-radius:999px; padding:4px 10px; }
-    .badge.completed{ background:#ecfdf5; color:#047857; }
-    .badge.approved{ background:#eff6ff; color:#1d4ed8; }
-    .badge.rejected{ background:#fef2f2; color:#b91c1c; }
-    .badge.pending{ background:#fdf6e6; color:#b45309; }
-    .section-title { margin:16px 0 8px; font-size:.95rem; color:#334155; font-weight:700; }
-    .modal-table { width:100%; border-collapse:collapse; }
-    .modal-table th, .modal-table td { border:1px solid #eef2f7; padding:8px 10px; font-size:.92rem; }
-    .modal-footer { display:flex; justify-content:flex-end; gap:10px; padding:14px 16px; border-top:1px solid #eef2f7; background:#fafbfc; }
-    .btn { border:0; border-radius:10px; padding:10px 14px; font-weight:600; cursor:pointer; }
-    .btn-outline { background:#e5e7eb; }
-    .btn-outline:hover { background:#dfe3e8; }
-    .btn-primary { background:#2563eb; color:#fff; }
-    .btn-primary:hover { background:#1d4ed8; }
-    .tiny-muted { color:#6b7280; font-size:.8rem; }
-    @media (max-width: 720px) {
-      .meta-grid { grid-template-columns:1fr; }
-      .meta-item .lbl { min-width:120px; }
-    }
-  </style>
 </head>
 <body>
   <header class="app-header">

@@ -861,7 +861,6 @@ body {
   from { transform: scale(0.9); opacity: 0; }
   to   { transform: scale(1); opacity: 1; }
 }
-<style>
   /* ===== Generic modal overlay ===== */
   .modal-overlay {
     position: fixed;
@@ -950,4 +949,57 @@ body {
   .status-approved { background:#ecfdf5; color:#047857; }
   .status-rejected { background:#fef2f2; color:#b91c1c; }
   .status-processing { background:#eff6ff; color:#1d4ed8; }
-</style>
+
+  /* Success Modal — match your existing HTML */
+#successModal .modal-content {
+  background: #fff;
+  border-radius: var(--radius);
+  width: min(420px, 92vw);
+  padding: 26px 24px;
+  text-align: center;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+  position: relative;
+  animation: modal-in .22s ease-out forwards;
+}
+
+#successModal .modal-content:before {
+  /* subtle success icon circle */
+  content: "✓";
+  display: grid;
+  place-items: center;
+  width: 64px; height: 64px;
+  border-radius: 50%;
+  margin: 0 auto 12px auto;
+  background: #ecfdf5;
+  color: var(--success);
+  font-size: 28px;
+  font-weight: 800;
+}
+
+#successTitle {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+#successMessage {
+  color: var(--text-light);
+  margin-bottom: 18px;
+}
+
+#successModal .modal-content button {
+  border: 0;
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-weight: 600;
+  cursor: pointer;
+  background: var(--success);
+  color: #fff;
+  transition: transform .06s ease, opacity .12s ease;
+}
+
+#successModal .modal-content button:hover { opacity: .92; }
+#successModal .modal-content button:active { transform: translateY(1px); }
+
+/* Reuse your existing overlay show/hide + animation */
+@keyframes modal-in { from { transform: translateY(6px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }

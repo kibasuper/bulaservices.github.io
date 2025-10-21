@@ -10,8 +10,6 @@ if ($_SESSION['admin_role'] !== 'superadmin') {
     exit;
 }
 ?>
-
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -23,6 +21,17 @@ if ($_SESSION['admin_role'] !== 'superadmin') {
 </head>
 <body>
 
+  <!-- NEW top header (your requested header) -->
+  <header class="app-header">
+    <div class="container header-content">
+      <h1><i class="fas fa-users-cog"></i> Officials Management</h1>
+      <div class="header-actions">
+        <a href="admin.php" class="dashboard-link"><i class="fas fa-arrow-left"></i> Dashboard</a>
+      </div>
+    </div>
+  </header>
+
+  <!-- ORIGINAL page header moved BELOW -->
   <header class="page-header">
     <h1><i class="fa-solid fa-users"></i> Resident Management</h1>
     <div class="actions">
@@ -79,7 +88,6 @@ if ($_SESSION['admin_role'] !== 'superadmin') {
     <table class="grid">
       <thead>
         <tr>
-          <!-- removed # -->
           <th>Profile</th>
           <th>Name</th>
           <th>Gender</th>
@@ -88,7 +96,6 @@ if ($_SESSION['admin_role'] !== 'superadmin') {
           <th>Status</th>
           <th>Contact</th>
           <th>Address</th>
-          <!-- removed Actions -->
         </tr>
       </thead>
       <tbody id="residentsTbody">

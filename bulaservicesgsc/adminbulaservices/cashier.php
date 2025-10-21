@@ -34,7 +34,7 @@ if (!isset($_SESSION['admin_id'])) { header('Location: index.php'); exit; }
           <button class="clear-cart-btn" id="clearCartBtn"><i class="fas fa-trash"></i> Clear</button>
         </div>
         <div class="cart-items" id="cartItems">
-          <div class="empty-cart-message">No items in cart</div>
+          <div class="empty-cart-message">No items Added</div>
         </div>
         <div class="pos-totals">
           <div class="total-row"><span>Total:</span><span class="total-amount" id="cartTotal">₱0.00</span></div>

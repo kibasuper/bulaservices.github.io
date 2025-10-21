@@ -214,7 +214,7 @@ function addToCart(src) {
   hiddenIds.add(String(src.id));
   updateCartUI();
   refreshList();
-  toast('Added to cart');
+  toast('Added');
 }
 
 function removeFromCart(id) {
@@ -234,7 +234,7 @@ function clearCart() {
 function updateCartUI() {
   cartItems.innerHTML = '';
   if (!cart.length) {
-    cartItems.innerHTML = '<div class="empty-cart-message">No items in cart</div>';
+    cartItems.innerHTML = '<div class="empty-cart-message">No items</div>';
     cartTotal.textContent = peso(0);
     processPaymentBtn.disabled = true;
     updateChange();

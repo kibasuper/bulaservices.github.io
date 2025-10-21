@@ -55,16 +55,24 @@ define('PUBLIC_BASE_URL',  'https://bulaservicesgsc.com');                      
 
 // ---------------- Security Headers ----------------
 header(
-    "Content-Security-Policy: default-src 'self'; " .
+    "Content-Security-Policy: " .
+    // base
+    "default-src 'self'; " .
+    // scripts & styles 
     "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; " .
-    "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com https://cdn.jsdelivr.net; " .
+    "style-src  'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com https://cdn.jsdelivr.net; " .
+    // NEW: allow XHR/fetch/devtools source-map fetches to CDNs
+    "connect-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://fonts.googleapis.com https://fonts.gstatic.com; " .
+    // fonts/images allowed
     "font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com data:; " .
-    "img-src 'self' data: blob:; " .              // allow images from PHP stream + data/blob
-    "object-src 'none'; " .                       // block old Flash/SWF
-    "frame-src 'self'; " .                        // allow iframes from same domain (PDF preview)
-    "child-src 'self'; " .                        // same for embed/iframe
+    "img-src  'self' data: blob:; " .
+    // optional (safe to keep)
+    "object-src 'none'; " .
+    "frame-src 'self'; " .
+    "child-src 'self'; " .
     "media-src 'self' data: blob:;" 
 );
+
 
 header("X-Frame-Options: DENY");
 header("X-Content-Type-Options: nosniff");

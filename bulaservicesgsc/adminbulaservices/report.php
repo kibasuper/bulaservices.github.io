@@ -77,15 +77,12 @@ if ($_SESSION['admin_role'] !== 'superadmin') {
             <div class="report-header">
                 <h2 class="section-title">Service Requests Report</h2>
                 <div class="report-actions">
-                    <button class="report-btn export-btn" data-report="requests"><i class="fas fa-file-pdf"></i> Export PDF</button>
+        
                     <button class="report-btn export-btn" data-report="requests"><i class="fas fa-file-csv"></i> Export CSV</button>
                 </div>
             </div>
 
-            <div class="chart-row">
-                <div class="chart-half"><div class="chart-container"><canvas id="requestsChart"></canvas></div></div>
-                <div class="chart-half"><div class="chart-container"><canvas id="requestsPieChart"></canvas></div></div>
-            </div>
+          
 
             <table class="data-table" id="requestsTable">
                 <thead>
@@ -106,7 +103,7 @@ if ($_SESSION['admin_role'] !== 'superadmin') {
             <div class="report-header">
                 <h2 class="section-title">Sales Report</h2>
                 <div class="report-actions">
-                    <button class="report-btn export-btn" data-report="financial"><i class="fas fa-file-pdf"></i> Export PDF</button>
+                    
                     <button class="report-btn export-btn" data-report="financial"><i class="fas fa-file-csv"></i> Export CSV</button>
                 </div>
             </div>
@@ -128,7 +125,7 @@ if ($_SESSION['admin_role'] !== 'superadmin') {
             <div class="report-header">
                 <h2 class="section-title">Resident Demographics Report</h2>
                 <div class="report-actions">
-                    <button class="report-btn export-btn" data-report="demographics"><i class="fas fa-file-pdf"></i> Export PDF</button>
+                    
                     <button class="report-btn export-btn" data-report="demographics"><i class="fas fa-file-csv"></i> Export CSV</button>
                 </div>
             </div>
