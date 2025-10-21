@@ -6,7 +6,6 @@ header('X-Content-Type-Options: nosniff');
 
 $DEBUG = isset($_GET['debug']) && $_GET['debug'] === '1';
 
-/** 1) Boot the app (starts the session with the right cookie) */
 require_once __DIR__ . '/../server/config.php';
 if (!isLoggedIn()) {
     http_response_code(401);
@@ -14,7 +13,6 @@ if (!isLoggedIn()) {
     exit;
 }
 
-/** 2) DB connection */
 try {
     $pdo = getDBConnection();
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
@@ -28,7 +26,7 @@ try {
     exit;
 }
 
-/** 3) Session identity helpers */
+/** -------- session identity helpers -------- */
 function sess_pick(...$keys) {
     foreach ($keys as $k) {
         if (isset($_SESSION[$k]) && trim((string)$_SESSION[$k]) !== '') return $_SESSION[$k];
@@ -37,553 +35,471 @@ function sess_pick(...$keys) {
 }
 $userId   = (int)($_SESSION['user_id'] ?? 0);
 $fullName = trim((string)(
-    sess_pick('full_name', 'name') ?:
-    (trim((string)($_SESSION['first_name'] ?? '')).' '.trim((string)($_SESSION['last_name'] ?? '')))
+    sess_pick('full_name','name')
+    ?: (trim((string)($_SESSION['first_name'] ?? '')).' '.trim((string)($_SESSION['last_name'] ?? '')))
 ));
 $contact  = trim((string)sess_pick('contact_number','contact','phone','mobile'));
 $email    = trim((string)sess_pick('email','user_email'));
 
-// If identity is completely missing, block
 if ($userId <= 0 && $fullName === '' && $contact === '' && $email === '') {
-  http_response_code(401);
-  echo json_encode(['success'=>false,'message'=>'Not logged in']);
-  exit;
+    http_response_code(401);
+    echo json_encode(['success'=>false,'message'=>'Not logged in']);
+    exit;
 }
 
-/** 4) Utils */
+/** -------- utils -------- */
 function norm_name(?string $s): string {
-  $s = trim((string)$s);
-  $s = preg_replace('/\s+/', ' ', $s);
-  return mb_strtolower($s);
+    $s = trim((string)$s);
+    $s = preg_replace('/\s+/', ' ', $s);
+    return mb_strtolower($s);
 }
 function norm_phone(?string $s): string { return preg_replace('/\D+/', '', (string)$s); }
-function join_name(?string $first, ?string $last): string {
-  $first = trim((string)$first); $last = trim((string)$last);
-  $full = trim("$first $last");
-  return $full !== '' ? $full : trim($first.$last);
+function join_name(?string $f, ?string $l): string {
+    $f = trim((string)$f); $l = trim((string)$l);
+    $full = trim("$f $l");
+    return $full !== '' ? $full : trim($f.$l);
 }
 function toDateStr($v) {
-  if ($v === null || $v === '') return null;
-  $ts = strtotime((string)$v);
-  return $ts ? date('Y-m-d H:i:s', $ts) : (string)$v;
+    if ($v === null || $v === '') return null;
+    $ts = strtotime((string)$v);
+    return $ts ? date('Y-m-d H:i:s', $ts) : (string)$v;
 }
 function fileTypeFromPath(?string $path): string {
-  if (!$path) return 'alt';
-  $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
-  if (in_array($ext, ['pdf'])) return 'pdf';
-  if (in_array($ext, ['png','jpg','jpeg','gif','webp'])) return 'image';
-  return 'alt';
+    if (!$path) return 'alt';
+    $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+    if (in_array($ext, ['pdf'])) return 'pdf';
+    if (in_array($ext, ['png','jpg','jpeg','gif','webp'])) return 'image';
+    return 'alt';
 }
 function hasColumn(PDO $pdo, string $table, string $col): bool {
-  $st = $pdo->prepare("SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
-                       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ? LIMIT 1");
-  $st->execute([$table, $col]);
-  return (bool)$st->fetchColumn();
+    $st = $pdo->prepare("SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+                         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ? LIMIT 1");
+    $st->execute([$table, $col]);
+    return (bool)$st->fetchColumn();
 }
-function buildOrder(PDO $pdo, string $table, array $candidates): string {
-  $have = [];
-  foreach ($candidates as $c) { if (hasColumn($pdo,$table,$c)) $have[] = $c; }
-  if ($have) {
-    $exprs = array_map(fn($c) => "`$c`", $have);
-    return 'ORDER BY ' . implode(', ', $exprs) . ' DESC';
-  }
-  return 'ORDER BY `id` DESC';
+function buildOrder(PDO $pdo, string $table, array $cands): string {
+    $have=[];
+    foreach ($cands as $c) if (hasColumn($pdo,$table,$c)) $have[]=$c;
+    return $have ? ('ORDER BY '.implode(', ', array_map(fn($c)=>"`$c` DESC", $have))) : 'ORDER BY `id` DESC';
 }
-
-/* -------- lenient identity helpers -------- */
 function hydrateIdentityFromUsers(PDO $pdo, array $me): array {
-  if (!empty($me['user_id'])) {
-    try {
-      $st = $pdo->prepare("SELECT first_name, last_name, contact_number, email FROM users WHERE id = ? LIMIT 1");
-      $st->execute([$me['user_id']]);
-      if ($row = $st->fetch(PDO::FETCH_ASSOC)) {
-        $name  = norm_name(join_name($row['first_name'] ?? '', $row['last_name'] ?? ''));
-        $phone = norm_phone($row['contact_number'] ?? '');
-        $email = mb_strtolower(trim((string)($row['email'] ?? '')));
-        if ($me['name']  === '' && $name  !== '') $me['name']  = $name;
-        if ($me['phone'] === '' && $phone !== '') $me['phone'] = $phone;
-        if ($me['email'] === '' && $email !== '') $me['email'] = $email;
-      }
-    } catch (Throwable $e) { /* ignore */ }
-  }
-  return $me;
-}
-function phonesEqualLoose(string $a, string $b): bool {
-  $a = norm_phone($a); $b = norm_phone($b);
-  if ($a === '' || $b === '') return false;
-  foreach ([11,10,9] as $len) {
-    if (strlen($a) >= $len && strlen($b) >= $len) {
-      if (substr($a, -$len) === substr($b, -$len)) return true;
+    if (!empty($me['user_id'])) {
+        try {
+            $st=$pdo->prepare("SELECT first_name,last_name,contact_number,email FROM users WHERE id=? LIMIT 1");
+            $st->execute([$me['user_id']]);
+            if ($row=$st->fetch(PDO::FETCH_ASSOC)) {
+                $name  = norm_name(join_name($row['first_name']??'', $row['last_name']??''));
+                $phone = norm_phone($row['contact_number']??'');
+                $email = mb_strtolower(trim((string)($row['email']??'')));
+                if ($me['name']===''  && $name!=='')  $me['name']=$name;
+                if ($me['phone']==='' && $phone!=='') $me['phone']=$phone;
+                if ($me['email']==='' && $email!=='') $me['email']=$email;
+            }
+        } catch (Throwable $e) { /* ignore */ }
     }
-  }
-  return $a === $b;
+    return $me;
 }
-function namesLikelySame(string $a, string $b): bool {
-  $a = norm_name($a); $b = norm_name($b);
-  if ($a === '' || $b === '') return false;
-  if ($a === $b) return true;
-  $ta = preg_split('/\s+/', $a, -1, PREG_SPLIT_NO_EMPTY) ?: [];
-  $tb = preg_split('/\s+/', $b, -1, PREG_SPLIT_NO_EMPTY) ?: [];
-  if (!$ta || !$tb) return false;
-  $set = array_flip($tb);
-  $common = 0;
-  foreach ($ta as $t) if (isset($set[$t])) $common++;
-  return $common >= 2;
+function phonesEqualLoose(string $a,string $b): bool {
+    $a=norm_phone($a); $b=norm_phone($b);
+    if ($a===''||$b==='') return false;
+    foreach([11,10,9] as $len){
+        if(strlen($a)>=$len && strlen($b)>=$len && substr($a,-$len)===substr($b,-$len)) return true;
+    }
+    return $a===$b;
+}
+function namesLikelySame(string $a,string $b): bool {
+    $a=norm_name($a); $b=norm_name($b);
+    if($a===''||$b==='') return false;
+    if($a===$b) return true;
+    $ta=preg_split('/\s+/', $a, -1, PREG_SPLIT_NO_EMPTY)?:[];
+    $tb=preg_split('/\s+/', $b, -1, PREG_SPLIT_NO_EMPTY)?:[];
+    if(!$ta||!$tb) return false;
+    $set=array_flip($tb); $common=0;
+    foreach($ta as $t) if(isset($set[$t])) $common++;
+    return $common>=2;
 }
 
-/* -------- reservations (gym) time helpers -------- */
+/** ---- gym helpers ---- */
 function parseReservationWindow(array $r): array {
-  // Derive start/end from reservation_date + time_slots JSON (hours)
-  $date = (string)($r['reservation_date'] ?? '');
-  $slotsJson = (string)($r['time_slots'] ?? '');
-  $tz = new DateTimeZone('Asia/Manila');
-
-  $hours = [];
-  if ($slotsJson !== '') {
-    $arr = json_decode($slotsJson, true);
-    if (is_array($arr)) {
-      foreach ($arr as $s) {
-        if (is_array($s) && isset($s['hour'])) {
-          $hours[] = (int)$s['hour'];
-        } elseif (is_string($s) && preg_match('/(\d{1,2}):00/', $s, $m)) {
-          $hours[] = (int)$m[1];
+    $date=(string)($r['reservation_date']??'');
+    $slots=(string)($r['time_slots']??'');
+    $tz=new DateTimeZone('Asia/Manila');
+    $hours=[];
+    if($slots!==''){
+        $arr=json_decode($slots,true);
+        if(is_array($arr)){
+            foreach($arr as $s){
+                if(is_array($s) && isset($s['hour'])) $hours[]=(int)$s['hour'];
+                elseif(is_string($s) && preg_match('/(\d{1,2}):00/',$s,$m)) $hours[]=(int)$m[1];
+            }
         }
-      }
     }
-  }
-  $hours = array_values(array_unique(array_filter($hours, fn($h)=>$h>=0 && $h<=23)));
-  sort($hours);
-
-  if ($date === '' || empty($hours)) {
-    return [null, null]; // unknown
-  }
-  $minH = min($hours);
-  $maxH = max($hours) + 1; // last hour boundary
-
-  $start = DateTimeImmutable::createFromFormat('Y-m-d H:i:s', sprintf('%s %02d:00:00', $date, $minH), $tz);
-  $end   = DateTimeImmutable::createFromFormat('Y-m-d H:i:s', sprintf('%s %02d:00:00', $date, $maxH), $tz);
-  return [$start ?: null, $end ?: null];
+    $hours=array_values(array_unique(array_filter($hours,fn($h)=>$h>=0 && $h<=23)));
+    sort($hours);
+    if($date===''||empty($hours)) return [null,null];
+    $min=min($hours); $max=max($hours)+1;
+    $start=DateTimeImmutable::createFromFormat('Y-m-d H:i:s', sprintf('%s %02d:00:00',$date,$min),$tz);
+    $end  =DateTimeImmutable::createFromFormat('Y-m-d H:i:s', sprintf('%s %02d:00:00',$date,$max),$tz);
+    return [$start?:null,$end?:null];
 }
-
-/* -------- gym lifecycle mapping -------- */
 function mapReservationLifecycle(array $r): string {
-  $tz       = new DateTimeZone('Asia/Manila');
-  $now      = new DateTimeImmutable('now', $tz);
-
-  $raw      = strtolower(trim((string)($r['status'] ?? '')));
-  $claimed  = toDateStr($r['claimed_at'] ?? null);
-  $paid     = toDateStr($r['paid_at'] ?? null);
-
-  // rejected/cancelled wins
-  if (in_array($raw, ['rejected','cancelled','canceled','void'], true)) return 'rejected';
-  // claimed => completed
-  if ($claimed !== null) return 'completed';
-
-  [$start, $end] = parseReservationWindow($r);
-  if (!$start || !$end) {
-    // Fallback to raw flags if timing unknown
-    if ($paid !== null) return 'incoming';
-    if (in_array($raw, ['approved','processing','in_progress','for_processing','paid'], true)) return 'approved';
-    return 'waiting_approval';
-  }
-
-  if ($now < $start) {
-    if ($paid !== null) return 'incoming';      // paid but not started
-    if (in_array($raw, ['approved','processing','in_progress','for_processing','paid'], true)) return 'approved';
-    return 'waiting_approval';
-  }
-
-  if ($now >= $start && $now < $end) {
-    return 'ongoing';
-  }
-
-  // past the scheduled window → completed
-  return 'completed';
+    $tz=new DateTimeZone('Asia/Manila'); $now=new DateTimeImmutable('now',$tz);
+    $raw=strtolower(trim((string)($r['status']??'')));
+    $claimed=toDateStr($r['claimed_at']??null);
+    $paid   =toDateStr($r['paid_at']??null);
+    if(in_array($raw,['rejected','cancelled','canceled','void'],true)) return 'rejected';
+    if($claimed!==null) return 'completed';
+    [$start,$end]=parseReservationWindow($r);
+    if(!$start||!$end){
+        if($paid!==null) return 'incoming';
+        if(in_array($raw,['approved','processing','in_progress','for_processing','paid'],true)) return 'approved';
+        return 'waiting_approval';
+    }
+    if($now<$start){
+        if($paid!==null) return 'incoming';
+        if(in_array($raw,['approved','processing','in_progress','for_processing','paid'],true)) return 'approved';
+        return 'waiting_approval';
+    }
+    if($now>=$start && $now<$end) return 'ongoing';
+    return 'completed';
 }
-
-/* -------- certificates lifecycle mapping -------- */
 function computeServiceStatusSR(array $r): string {
-  $raw = strtolower(trim((string)($r['status'] ?? '')));
+    $raw=strtolower(trim((string)($r['status']??'')));
+    $approved=toDateStr($r['approved_date']??null);
+    $paid    =toDateStr($r['paid_at']??null);
+    $released=toDateStr($r['released_at']??null);
+    $claimed =toDateStr($r['claimed_at']??null); // legacy path
 
-  $approved = toDateStr($r['approved_date'] ?? null);
-  $paid     = toDateStr($r['paid_at']       ?? null);
-  $claimed  = toDateStr($r['claimed_at']    ?? null);
-
-  // explicit terminal states
-  if (in_array($raw, ['rejected','cancelled','canceled','void'], true)) return 'rejected';
-  if ($claimed) return 'completed';
-
-  // paid but not yet claimed => waiting to be released
-  if ($paid) return 'paid';
-
-  // admin approved (or raw approved-ish) => approved
-  if ($approved || in_array($raw, ['approved','processing','in_progress','for_processing'], true)) {
-    return 'approved';
-  }
-
-  // default
-  return 'waiting_approval';
+    if(in_array($raw,['rejected','cancelled','canceled','void'],true)) return 'rejected';
+    if($released || $claimed) return 'completed';
+    if($paid)    return 'paid';
+    if($approved || in_array($raw,['approved','processing','in_progress','for_processing'],true)) return 'approved';
+    return 'waiting_approval';
 }
 
-/** 5) Action */
-$raw = file_get_contents('php://input') ?: '';
-$body = json_decode($raw, true);
-$action = $_GET['action'] ?? ($body['action'] ?? 'list');
-if ($action !== 'list') {
-  http_response_code(400);
-  echo json_encode(['success'=>false,'message'=>'Invalid action']);
-  exit;
+/** ---- action ---- */
+$raw=file_get_contents('php://input')?:'';
+$body=json_decode($raw,true);
+$action=$_GET['action'] ?? ($body['action'] ?? 'list');
+if($action!=='list'){
+    http_response_code(400);
+    echo json_encode(['success'=>false,'message'=>'Invalid action']);
+    exit;
 }
 
-/** 6) Normalized identity (for matching) */
-$me = [
-  'user_id' => $userId,
-  'name'    => norm_name($fullName),
-  'phone'   => norm_phone($contact),
-  'email'   => mb_strtolower($email),
+/** ---- normalized identity ---- */
+$me=[
+    'user_id'=>$userId,
+    'name'=>norm_name($fullName),
+    'phone'=>norm_phone($contact),
+    'email'=>mb_strtolower($email),
 ];
-// Enrich session identity from users table if any field is missing
-if ($me['name'] === '' || $me['phone'] === '' || $me['email'] === '') {
-  $me = hydrateIdentityFromUsers($pdo, $me);
+if($me['name']===''||$me['phone']===''||$me['email']===''){
+    $me=hydrateIdentityFromUsers($pdo,$me);
 }
+$items=[]; $debug=['session'=>$me];
 
-$items = [];
-$debug = ['session'=>$me];
+/** ---- helper: pretty admin display name ---- */
+$getAdminName = function(int $adminId) use ($pdo): string {
+    $st = $pdo->prepare("SELECT first_name, last_name, username FROM admins WHERE admin_id = ? LIMIT 1");
+    $st->execute([$adminId]);
+    $a = $st->fetch(PDO::FETCH_ASSOC) ?: [];
+    $name = trim(((string)($a['first_name'] ?? '')).' '.((string)($a['last_name'] ?? '')));
+    if ($name !== '') return $name;
+    $username = trim((string)($a['username'] ?? ''));
+    if ($username !== '') return $username;
+    return 'Admin #'.$adminId;
+};
 
-/** 7) SERVICE REQUESTS (certificates) — NOW WITH ACTORS */
-try {
-  $sr_has_user_id        = hasColumn($pdo,'service_requests','user_id');
-  $sr_has_requester_name = hasColumn($pdo,'service_requests','requester_name') || hasColumn($pdo,'service_requests','requestor_name');
-  $sr_has_contact_number = hasColumn($pdo,'service_requests','contact_number');
+/** ================= SERVICE REQUESTS (certificates) ================= */
+try{
+    $sr_has_user_id        = hasColumn($pdo,'service_requests','user_id');
+    $sr_has_requester_name = hasColumn($pdo,'service_requests','requester_name') || hasColumn($pdo,'service_requests','requestor_name');
+    $sr_has_contact_number = hasColumn($pdo,'service_requests','contact_number');
+    $sr_has_approved_by    = hasColumn($pdo,'service_requests','approved_by');
+    $sr_has_released_by    = hasColumn($pdo,'service_requests','released_by_admin_id'); // your column
+    $sr_has_claimed_by     = hasColumn($pdo,'service_requests','claimed_by');           // legacy
 
-  $srOrder = buildOrder($pdo, 'service_requests', [
-    'claimed_at','paid_at','processed_date','approved_date','request_date','created_at'
-  ]);
+    $srOrder = buildOrder($pdo,'service_requests',[
+        'released_at','claimed_at','paid_at','processed_date','approved_date','request_date','created_at'
+    ]);
 
-  $joinUsers = $sr_has_user_id ? "LEFT JOIN users u ON u.id = sr.user_id" : "LEFT JOIN users u ON 1=0";
+    $joinUsers = $sr_has_user_id ? "LEFT JOIN users u ON u.id = sr.user_id" : "LEFT JOIN users u ON 1=0";
+    $sql = "SELECT sr.*,
+                   u.first_name AS u_first_name,
+                   u.last_name  AS u_last_name,
+                   u.contact_number AS u_contact,
+                   u.email AS u_email
+            FROM service_requests sr
+            $joinUsers
+            $srOrder
+            LIMIT 500";
+    $rows = $pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-  // Latest payment per service_request (by max payment_id — aligns with your process_payment implementation)
-  $latestPaySR = "
-    LEFT JOIN (
-      SELECT t.request_id,
-             p.id AS pay_id,
-             p.receipt_number,
-             p.cashier_id,
-             COALESCE(p.paid_at, p.created_at) AS pay_ts
-      FROM (
-        SELECT pi.request_id, MAX(pi.payment_id) AS payment_id
-        FROM payment_items pi
-        GROUP BY pi.request_id
-      ) t
-      JOIN payments p ON p.id = t.payment_id
-    ) lpsr ON lpsr.request_id = sr.id
-  ";
+    /* processed_by (cashier) via latest payment for this service_request */
+    $stPayLatest = $pdo->prepare("
+        SELECT p.cashier_id
+        FROM payments p
+        JOIN payment_items pi ON pi.payment_id = p.id
+        WHERE pi.request_type <> 'gym_reservation' AND pi.request_id = ?
+        ORDER BY p.id DESC
+        LIMIT 1
+    ");
 
-  // Admin joins for approver / cashier / releaser
-  $joinAdmins = "
-    LEFT JOIN admins ap ON ap.admin_id = sr.approved_by
-    LEFT JOIN admins ca ON ca.admin_id = lpsr.cashier_id
-    LEFT JOIN admins ra ON ra.admin_id = sr.claimed_by
-  ";
+    $matched=0;
+    foreach($rows as $r){
+        $match=false;
 
-  $sql = "SELECT sr.*,
-                 u.first_name  AS u_first_name,
-                 u.last_name   AS u_last_name,
-                 u.contact_number AS u_contact,
-                 u.email       AS u_email,
+        if($me['user_id']>0 && $sr_has_user_id && (int)($r['user_id']??0)===$me['user_id']) $match=true;
 
-                 -- approver
-                 ap.first_name AS ap_first_name,
-                 ap.last_name  AS ap_last_name,
-
-                 -- cashier via latest payment
-                 lpsr.pay_id,
-                 lpsr.receipt_number,
-                 lpsr.cashier_id,
-                 lpsr.pay_ts,
-                 ca.first_name AS ca_first_name,
-                 ca.last_name  AS ca_last_name,
-
-                 -- releaser
-                 ra.first_name AS ra_first_name,
-                 ra.last_name  AS ra_last_name
-
-          FROM service_requests sr
-          $joinUsers
-          $latestPaySR
-          $joinAdmins
-          $srOrder
-          LIMIT 500";
-
-  $rows = $pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC) ?: [];
-
-  $matched = 0;
-  foreach ($rows as $r) {
-    $match = false;
-
-    // 1) user_id match
-    if ($me['user_id'] > 0 && $sr_has_user_id && (int)($r['user_id'] ?? 0) === $me['user_id']) {
-      $match = true;
-    }
-
-    // 2) users table match (lenient)
-    if (!$match) {
-      $uName   = norm_name(join_name($r['u_first_name'] ?? '', $r['u_last_name'] ?? ''));
-      $uPhone  = norm_phone($r['u_contact'] ?? '');
-      $uEmail  = mb_strtolower(trim((string)($r['u_email'] ?? '')));
-      if ($uName !== ''  && $me['name']  !== '' && namesLikelySame($uName, $me['name'])) $match = true;
-      if (!$match && $uPhone !== '' && $me['phone'] !== '' && phonesEqualLoose($uPhone, $me['phone'])) $match = true;
-      if (!$match && $uEmail !== '' && $me['email'] !== '' && $uEmail === $me['email']) $match = true;
-    }
-
-    // 3) service_requests row match (lenient)
-    if (!$match && $sr_has_requester_name) {
-      $reqName = '';
-      if (isset($r['requester_name'])) $reqName = norm_name((string)$r['requester_name']);
-      if (!$reqName && isset($r['requestor_name'])) $reqName = norm_name((string)$r['requestor_name']);
-      if ($reqName !== '' && $me['name'] !== '' && namesLikelySame($reqName, $me['name'])) $match = true;
-    }
-    if (!$match && $sr_has_contact_number) {
-      $reqPhone = norm_phone($r['contact_number'] ?? '');
-      if ($reqPhone !== '' && $me['phone'] !== '' && phonesEqualLoose($reqPhone, $me['phone'])) $match = true;
-    }
-
-    if (!$match) continue;
-    $matched++;
-
-    $rawStatus = strtolower(trim((string)($r['status'] ?? '')));
-    $status    = computeServiceStatusSR($r);
-
-    $ref       = (string)($r['reference_number'] ?? $r['id'] ?? '');
-    $submitted = toDateStr($r['request_date'] ?? $r['created_at'] ?? null) ?? '—';
-    $updated   = toDateStr($r['claimed_at'] ?? $r['paid_at'] ?? $r['processed_date'] ?? $r['approved_date'] ?? $r['request_date'] ?? $r['created_at'] ?? null) ?? $submitted;
-    $estimated = toDateStr($r['pickup_date'] ?? null);
-    $docPath   = (string)($r['document_path'] ?? '');
-
-    $docs = $docPath !== '' ? [[ 'name' => basename($docPath), 'type' => fileTypeFromPath($docPath) ]] : [];
-
-    $timeline = [];
-    if (!empty($r['admin_notes']))     $timeline[] = ['date'=>$updated, 'content'=> (string)$r['admin_notes']];
-    if (!empty($r['rejected_reason'])) $timeline[] = ['date'=>$updated, 'content'=> 'Rejected: '.(string)$r['rejected_reason']];
-
-    $stype = (string)($r['service_type'] ?? 'Service Request');
-    $pretty = [
-      'barangay_clearance' => 'Barangay Clearance',
-      'indigency'          => 'Certificate of Indigency',
-      'residency'          => 'Certificate of Residency',
-      'business_permit'    => 'Business Permit',
-      'gym'                => 'Gym Reservation',
-    ];
-    $type  = $pretty[strtolower($stype)] ?? ucwords(str_replace(['_','-'],' ', $stype));
-
-    // ===== Actors (approver/cashier/releaser) =====
-    $approvedByName = trim(($r['ap_first_name'] ?? '').' '.($r['ap_last_name'] ?? '')) ?: null;
-    $approvedDate   = toDateStr($r['approved_date'] ?? null);
-
-    $cashierName    = trim(($r['ca_first_name'] ?? '').' '.($r['ca_last_name'] ?? '')) ?: null;
-    $cashierDate    = toDateStr($r['pay_ts'] ?? null);
-    $receipt        = (string)($r['receipt_number'] ?? '');
-
-    $releasedName   = trim(($r['ra_first_name'] ?? '').' '.($r['ra_last_name'] ?? '')) ?: null;
-    $releasedDate   = toDateStr($r['claimed_at'] ?? null);
-
-    $actors = [
-      'approved_by' => $approvedByName ? ['name'=>$approvedByName, 'date'=>$approvedDate] : null,
-      'processed_by'=> $cashierName    ? ['name'=>$cashierName,   'date'=>$cashierDate, 'receipt'=>$receipt] : null,
-      'released_by' => $releasedName   ? ['name'=>$releasedName,  'date'=>$releasedDate] : null,
-    ];
-
-    $item = [
-      'id'        => (int)$r['id'],
-      'type'      => $type ?: 'Service Request',
-      'status'    => $status,      // waiting_approval | approved | paid | completed | rejected
-      'raw_status'=> $rawStatus,   // for debugging / validation
-      'submitted' => $submitted,
-      'updated'   => $updated,
-      'officer'   => 'Barangay Staff',
-      'reference' => $ref ?: (string)($r['id'] ?? ''),
-      'estimated' => $estimated,
-      'documents' => $docs,
-      'timeline'  => $timeline,
-      'actors'    => $actors,      // <— NEW
-    ];
-    $items[] = $item;
-  }
-
-  if ($DEBUG) {
-    $debug['service_requests'] = [
-      'order_by' => $srOrder,
-      'read'     => count($rows),
-      'matched'  => $matched,
-      'actors'   => true,
-    ];
-  }
-} catch (Throwable $e) {
-  if ($DEBUG) $debug['service_requests_error'] = $e->getMessage();
-}
-
-/** 8) RESERVATIONS (gym) — NOW WITH CASHIER (Processed by) */
-try {
-  $rv_has_user_id = hasColumn($pdo,'reservations','user_id');
-
-  $rvOrder = buildOrder($pdo, 'reservations', [
-    'claimed_at','paid_at','reservation_date','created_at','updated_at'
-  ]);
-
-  $joinUsers = $rv_has_user_id ? "LEFT JOIN users u ON u.id = r.user_id" : "LEFT JOIN users u ON 1=0";
-
-  // Latest payment per reservation
-  $latestPayRV = "
-    LEFT JOIN (
-      SELECT t.request_id,
-             p.id AS pay_id,
-             p.receipt_number,
-             p.cashier_id,
-             COALESCE(p.paid_at, p.created_at) AS pay_ts
-      FROM (
-        SELECT pi.request_id, MAX(pi.payment_id) AS payment_id
-        FROM payment_items pi
-        GROUP BY pi.request_id
-      ) t
-      JOIN payments p ON p.id = t.payment_id
-    ) lpr ON lpr.request_id = r.id
-  ";
-
-  $joinAdmins = "
-    LEFT JOIN admins ca ON ca.admin_id = lpr.cashier_id
-  ";
-
-  $sql = "SELECT r.*,
-                 u.first_name AS u_first_name,
-                 u.last_name  AS u_last_name,
-                 u.contact_number AS u_contact,
-                 u.email AS u_email,
-
-                 lpr.pay_id,
-                 lpr.receipt_number,
-                 lpr.cashier_id,
-                 lpr.pay_ts,
-                 ca.first_name AS ca_first_name,
-                 ca.last_name  AS ca_last_name
-
-          FROM reservations r
-          $joinUsers
-          $latestPayRV
-          $joinAdmins
-          $rvOrder
-          LIMIT 500";
-
-  $rows = $pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC) ?: [];
-
-  $matched = 0;
-  foreach ($rows as $r) {
-    $match = false;
-
-    // 1) user_id match (strongest)
-    if ($rv_has_user_id && $me['user_id'] > 0 && (int)($r['user_id'] ?? 0) === $me['user_id']) {
-      $match = true;
-    }
-
-    // 2) users table match (lenient)
-    if (!$match) {
-      $uName   = norm_name(join_name($r['u_first_name'] ?? '', $r['u_last_name'] ?? ''));
-      $uPhone  = norm_phone($r['u_contact'] ?? '');
-      $uEmail  = mb_strtolower(trim((string)($r['u_email'] ?? '')));
-      if ($uName !== ''  && $me['name']  !== '' && namesLikelySame($uName, $me['name'])) $match = true;
-      if (!$match && $uPhone !== '' && $me['phone'] !== '' && phonesEqualLoose($uPhone, $me['phone'])) $match = true;
-      if (!$match && $uEmail !== '' && $me['email'] !== '' && $uEmail === $me['email']) $match = true;
-    }
-
-    // 3) their own columns (lenient)
-    if (!$match) {
-      $rName  = norm_name((string)($r['resident_name'] ?? ''));
-      $rPhone = norm_phone((string)($r['contact_number'] ?? ''));
-      if ($rName !== '' && $me['name'] !== '' && namesLikelySame($rName, $me['name'])) $match = true;
-      if (!$match && $rPhone !== '' && $me['phone'] !== '' && phonesEqualLoose($rPhone, $me['phone'])) $match = true;
-    }
-
-    if (!$match) continue;
-    $matched++;
-
-    $status    = mapReservationLifecycle($r);
-    $rawStatus = strtolower(trim((string)($r['status'] ?? '')));
-    $ref       = (string)($r['reference_number'] ?? $r['id'] ?? '');
-    $submitted = toDateStr($r['created_at'] ?? $r['reservation_date'] ?? null) ?? '—';
-    $updated   = toDateStr($r['claimed_at'] ?? $r['paid_at'] ?? $r['updated_at'] ?? $r['reservation_date'] ?? $r['created_at'] ?? null) ?? $submitted;
-
-    $timeline = [];
-    if (!empty($r['notes'])) $timeline[] = ['date'=>$updated, 'content'=>(string)$r['notes']];
-
-    // Time slots pretty print (JSON or string) — keep existing
-    $slotsNice = '';
-    if (!empty($r['time_slots'])) {
-      $dec = json_decode((string)$r['time_slots'], true);
-      if (is_array($dec)) {
-        $parts = [];
-        foreach ($dec as $s) {
-          if (is_array($s) && isset($s['time'])) $parts[] = (string)$s['time'];
-          elseif (is_array($s) && isset($s['hour'])) {
-            $h = (int)$s['hour'];
-            $fmt = function(int $x){ $ampm = $x >= 12 ? 'PM' : 'AM'; $dh = $x>12 ? $x-12 : ($x===0?12:$x); return "{$dh}:00 {$ampm}"; };
-            $parts[] = $fmt($h).' - '.$fmt($h+1);
-          } elseif (is_string($s) && trim($s) !== '') $parts[] = trim($s);
+        if(!$match){
+            $uName  = norm_name(join_name($r['u_first_name']??'', $r['u_last_name']??''));
+            $uPhone = norm_phone($r['u_contact']??'');
+            $uEmail = mb_strtolower(trim((string)($r['u_email']??'')));
+            if($uName!=='' && $me['name']!=='' && namesLikelySame($uName,$me['name'])) $match=true;
+            if(!$match && $uPhone!=='' && $me['phone']!=='' && phonesEqualLoose($uPhone,$me['phone'])) $match=true;
+            if(!$match && $uEmail!=='' && $me['email']!=='' && $uEmail===$me['email']) $match=true;
         }
-        $slotsNice = implode(', ', $parts);
-      } else {
-        $slotsNice = (string)$r['time_slots'];
-      }
+
+        if(!$match && $sr_has_requester_name){
+            $reqName='';
+            if(isset($r['requester_name'])) $reqName=norm_name((string)$r['requester_name']);
+            if(!$reqName && isset($r['requestor_name'])) $reqName=norm_name((string)$r['requestor_name']);
+            if($reqName!=='' && $me['name']!=='' && namesLikelySame($reqName,$me['name'])) $match=true;
+        }
+        if(!$match && $sr_has_contact_number){
+            $reqPhone=norm_phone($r['contact_number']??'');
+            if($reqPhone!=='' && $me['phone']!=='' && phonesEqualLoose($reqPhone,$me['phone'])) $match=true;
+        }
+
+        if(!$match) continue;
+        $matched++;
+
+        $rawStatus = strtolower(trim((string)($r['status'] ?? '')));
+        $status    = computeServiceStatusSR($r);
+
+        $ref       = (string)($r['reference_number'] ?? $r['id'] ?? '');
+        $submitted = toDateStr($r['request_date'] ?? $r['created_at'] ?? null) ?? '—';
+        $updated   = toDateStr($r['released_at'] ?? $r['claimed_at'] ?? $r['paid_at'] ?? $r['processed_date'] ?? $r['approved_date'] ?? $r['request_date'] ?? $r['created_at'] ?? null) ?? $submitted;
+        $estimated = toDateStr($r['pickup_date'] ?? null);
+        $docPath   = (string)($r['document_path'] ?? '');
+        $docs = $docPath !== '' ? [[ 'name' => basename($docPath), 'type' => fileTypeFromPath($docPath) ]] : [];
+
+        /* APPROVED BY */
+        $approved_by_id   = ($sr_has_approved_by && isset($r['approved_by'])) ? (int)$r['approved_by'] : null;
+        $approved_by_name = $approved_by_id ? $getAdminName($approved_by_id) : null;
+
+        /* PROCESSED BY (latest payment’s cashier) */
+        $processed_by_id = null;
+        $processed_by_name = null;
+        $stPayLatest->execute([(int)$r['id']]);
+        if ($cid = $stPayLatest->fetchColumn()) {
+            $processed_by_id = (int)$cid;
+            $processed_by_name = $getAdminName($processed_by_id);
+        }
+
+        /* RELEASED BY (prefer new columns, fall back to legacy claimed_by) */
+        $released_by_id = null; $released_by_name = null;
+        $released_at = toDateStr($r['released_at'] ?? null);
+        if ($sr_has_released_by && !empty($r['released_by_admin_id'])) {
+            $released_by_id = (int)$r['released_by_admin_id'];
+            $released_by_name = $getAdminName($released_by_id);
+        } elseif ($sr_has_claimed_by && !empty($r['claimed_by'])) {
+            $released_by_id = (int)$r['claimed_by'];
+            $released_by_name = $getAdminName($released_by_id);
+            if (!$released_at) $released_at = toDateStr($r['claimed_at'] ?? null);
+        }
+
+        $stype = (string)($r['service_type'] ?? 'Service Request');
+        $pretty=[
+            'barangay_clearance'=>'Barangay Clearance',
+            'indigency'=>'Certificate of Indigency',
+            'residency'=>'Certificate of Residency',
+            'business_permit'=>'Business Permit',
+            'gym'=>'Gym Reservation',
+        ];
+        $type=$pretty[strtolower($stype)] ?? ucwords(str_replace(['_','-'],' ',$stype));
+
+        $timeline=[];
+        if(!empty($r['admin_notes']))     $timeline[]=['date'=>$updated,'content'=>(string)$r['admin_notes']];
+        if(!empty($r['rejected_reason'])) $timeline[]=['date'=>$updated,'content'=>'Rejected: '.(string)$r['rejected_reason']];
+
+        $items[]=[
+            'id'        => (int)$r['id'],
+            'type'      => $type ?: 'Service Request',
+            'status'    => $status,
+            'raw_status'=> $rawStatus,
+            'submitted' => $submitted,
+            'updated'   => $updated,
+            'officer'   => 'Barangay Staff',
+            'reference' => $ref ?: (string)($r['id'] ?? ''),
+            'estimated' => $estimated,
+            'documents' => $docs,
+            'timeline'  => $timeline,
+
+            // Staff fields for UI
+            'approved_by_id'   => $approved_by_id,
+            'approved_by_name' => $approved_by_name ?: null,
+            'processed_by_id'  => $processed_by_id,
+            'processed_by_name'=> $processed_by_name ?: null,
+            'released_by_id'   => $released_by_id,
+            'released_by_name' => $released_by_name ?: null,
+            'released_at'      => $released_at,
+        ];
     }
-    if ($slotsNice !== '') $timeline[] = ['date'=>$updated, 'content'=>"Time Slots: ".$slotsNice];
 
-    $activity = (string)($r['activity'] ?? '');
-    $type = 'Gym Reservation'.($activity !== '' ? ' - '.ucwords($activity) : '');
-
-    // Actors (only cashier is available out-of-the-box for reservations)
-    $cashierName  = trim(($r['ca_first_name'] ?? '').' '.($r['ca_last_name'] ?? '')) ?: null;
-    $cashierDate  = toDateStr($r['pay_ts'] ?? null);
-    $receipt      = (string)($r['receipt_number'] ?? '');
-
-    $actors = [
-      'approved_by' => null, // unless you later add approved_by/approved_date to reservations
-      'processed_by'=> $cashierName ? ['name'=>$cashierName, 'date'=>$cashierDate, 'receipt'=>$receipt] : null,
-      'released_by' => null, // release is not tracked for gym by default
-    ];
-
-    $items[] = [
-      'id'        => (int)$r['id'],
-      'type'      => $type,
-      'status'    => $status,      // waiting_approval | approved | incoming | ongoing | completed | rejected
-      'raw_status'=> $rawStatus,   // for debugging
-      'submitted' => $submitted,
-      'updated'   => $updated,
-      'officer'   => 'Barangay Staff',
-      'reference' => $ref ?: (string)($r['id'] ?? ''),
-      'estimated' => toDateStr($r['reservation_date'] ?? null),
-      'documents' => [],
-      'timeline'  => $timeline,
-      'actors'    => $actors,      // <— NEW
-    ];
-  }
-
-  if ($DEBUG) {
-    $debug['reservations'] = [
-      'order_by' => $rvOrder,
-      'read'     => count($rows),
-      'matched'  => $matched,
-      'actors'   => true,
-    ];
-  }
-} catch (Throwable $e) {
-  if ($DEBUG) $debug['reservations_error'] = $e->getMessage();
+    if($DEBUG){
+        $debug['service_requests']=[
+            'order_by'=>$srOrder,
+            'read'=>count($rows),
+            'matched'=>$matched,
+            'have_cols'=>[
+                'user_id'=>$sr_has_user_id,
+                'approved_by'=>$sr_has_approved_by,
+                'released_by_admin_id'=>$sr_has_released_by,
+                'claimed_by'=>$sr_has_claimed_by,
+                'requester_name'=>hasColumn($pdo,'service_requests','requester_name'),
+                'requestor_name'=>hasColumn($pdo,'service_requests','requestor_name'),
+                'contact_number'=>$sr_has_contact_number,
+            ],
+        ];
+    }
+}catch(Throwable $e){
+    if($DEBUG) $debug['service_requests_error']=$e->getMessage();
 }
 
-/** 9) Sort & respond */
+/** ================= RESERVATIONS (gym) ================= */
+try{
+    $rv_has_user_id = hasColumn($pdo,'reservations','user_id');
+    $rvOrder = buildOrder($pdo,'reservations',['claimed_at','paid_at','reservation_date','created_at','updated_at']);
+
+    $joinUsers = $rv_has_user_id ? "LEFT JOIN users u ON u.id = r.user_id" : "LEFT JOIN users u ON 1=0";
+    $sql = "SELECT r.*,
+                   u.first_name AS u_first_name,
+                   u.last_name  AS u_last_name,
+                   u.contact_number AS u_contact,
+                   u.email AS u_email
+            FROM reservations r
+            $joinUsers
+            $rvOrder
+            LIMIT 500";
+    $rows=$pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC)?:[];
+
+    /* processed_by via payments for gym */
+    $stPayLatestGym=$pdo->prepare("
+        SELECT p.cashier_id
+        FROM payments p
+        JOIN payment_items pi ON pi.payment_id = p.id
+        WHERE pi.request_type = 'gym_reservation' AND pi.request_id = ?
+        ORDER BY p.id DESC
+        LIMIT 1
+    ");
+
+    $matched=0;
+    foreach($rows as $r){
+        $match=false;
+
+        if($rv_has_user_id && $me['user_id']>0 && (int)($r['user_id']??0)===$me['user_id']) $match=true;
+
+        if(!$match){
+            $uName  = norm_name(join_name($r['u_first_name']??'', $r['u_last_name']??''));
+            $uPhone = norm_phone($r['u_contact']??'');
+            $uEmail = mb_strtolower(trim((string)($r['u_email']??'')));
+            if($uName!=='' && $me['name']!=='' && namesLikelySame($uName,$me['name'])) $match=true;
+            if(!$match && $uPhone!=='' && $me['phone']!=='' && phonesEqualLoose($uPhone,$me['phone'])) $match=true;
+            if(!$match && $uEmail!=='' && $me['email']!=='' && $uEmail===$me['email']) $match=true;
+        }
+
+        if(!$match){
+            $rName  = norm_name((string)($r['resident_name']??''));
+            $rPhone = norm_phone((string)($r['contact_number']??''));
+            if($rName!=='' && $me['name']!=='' && namesLikelySame($rName,$me['name'])) $match=true;
+            if(!$match && $rPhone!=='' && $me['phone']!=='' && phonesEqualLoose($rPhone,$me['phone'])) $match=true;
+        }
+
+        if(!$match) continue;
+        $matched++;
+
+        $status    = mapReservationLifecycle($r);
+        $rawStatus = strtolower(trim((string)($r['status'] ?? '')));
+        $ref       = (string)($r['reference_number'] ?? $r['id'] ?? '');
+        $submitted = toDateStr($r['created_at'] ?? $r['reservation_date'] ?? null) ?? '—';
+        $updated   = toDateStr($r['claimed_at'] ?? $r['paid_at'] ?? $r['updated_at'] ?? $r['reservation_date'] ?? $r['created_at'] ?? null) ?? $submitted;
+
+        /* processed_by via latest payment */
+        $processed_by_id=null; $processed_by_name=null;
+        $stPayLatestGym->execute([(int)$r['id']]);
+        if($cid=$stPayLatestGym->fetchColumn()){
+            $processed_by_id=(int)$cid;
+            $processed_by_name=$getAdminName($processed_by_id);
+        }
+
+        $timeline=[];
+        if(!empty($r['notes'])) $timeline[]=['date'=>$updated,'content'=>(string)$r['notes']];
+
+        $slotsNice='';
+        if(!empty($r['time_slots'])){
+            $dec=json_decode((string)$r['time_slots'],true);
+            if(is_array($dec)){
+                $parts=[];
+                foreach($dec as $s){
+                    if(is_array($s) && isset($s['time'])) $parts[]=(string)$s['time'];
+                    elseif(is_array($s) && isset($s['hour'])){
+                        $h=(int)$s['hour'];
+                        $fmt=function(int $x){ $ampm=$x>=12?'PM':'AM'; $dh=$x>12?$x-12:($x===0?12:$x); return "{$dh}:00 {$ampm}"; };
+                        $parts[]=$fmt($h).' - '.$fmt($h+1);
+                    } elseif (is_string($s) && trim($s)!=='') $parts[]=trim($s);
+                }
+                $slotsNice=implode(', ',$parts);
+            } else { $slotsNice=(string)$r['time_slots']; }
+        }
+        if($slotsNice!=='') $timeline[]=['date'=>$updated,'content'=>"Time Slots: ".$slotsNice];
+
+        $activity=(string)($r['activity']??'');
+        $type='Gym Reservation'.($activity!==''?' - '.ucwords($activity):'');
+
+        $items[]=[
+            'id'        => (int)$r['id'],
+            'type'      => $type,
+            'status'    => $status,
+            'raw_status'=> $rawStatus,
+            'submitted' => $submitted,
+            'updated'   => $updated,
+            'officer'   => 'Barangay Staff',
+            'reference' => $ref ?: (string)($r['id'] ?? ''),
+            'estimated' => toDateStr($r['reservation_date'] ?? null),
+            'documents' => [],
+            'timeline'  => $timeline,
+
+            // Staff fields (gym has no explicit approved_by/released_by in your flows)
+            'approved_by_id'    => null,
+            'approved_by_name'  => null,
+            'processed_by_id'   => $processed_by_id,
+            'processed_by_name' => $processed_by_name ?: null,
+            'released_by_id'    => null,
+            'released_by_name'  => null,
+            'released_at'       => null,
+        ];
+    }
+
+    if($DEBUG){
+        $debug['reservations']=[
+            'order_by'=>$rvOrder,
+            'read'=>count($rows),
+            'matched'=>$matched,
+            'have_cols'=>['user_id'=>$rv_has_user_id],
+        ];
+    }
+}catch(Throwable $e){
+    if($DEBUG) $debug['reservations_error']=$e->getMessage();
+}
+
+/** ---- sort + respond ---- */
 usort($items, function($a,$b){
-  return (strtotime($b['submitted'] ?? '0') <=> strtotime($a['submitted'] ?? '0'))
-      ?: (strtotime($b['updated']   ?? '0') <=> strtotime($a['updated']   ?? '0'));
+    return (strtotime($b['submitted']??'0') <=> strtotime($a['submitted']??'0'))
+        ?: (strtotime($b['updated']??'0') <=> strtotime($a['updated']??'0'));
 });
 
-$out = ['success'=>true, 'data'=>['items'=>$items]];
-if ($DEBUG) $out['debug'] = $debug;
-
+$out=['success'=>true,'data'=>['items'=>$items]];
+if($DEBUG) $out['debug']=$debug;
 echo json_encode($out);

@@ -167,7 +167,7 @@ if (!isset($_SESSION['admin_id'])) {
           <div class="meta-item"><span class="lbl">Payment Method:</span>  <span class="val" id="detail-payment"></span></div>
           <div class="meta-item"><span class="lbl">Processed By:</span>    <span class="val" id="detail-processor"></span></div>
           <div class="meta-item"><span class="lbl">Released By:</span>     <span class="val" id="detail-releasedby"></span></div>
-          <div class="meta-item"><span class="lbl">Status:</span>          <span class="val" id="detail-status"></span></div>
+          <div class="meta-item"><span class="lbl">Approved By:</span>          <span class="val" id="detail-status"></span></div>
         </div>
 
         <h3 class="section-title">Service Requests</h3>

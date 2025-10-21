@@ -53,7 +53,7 @@ if (empty($_SESSION['__bootstrapped'])) {
    2) ERROR REPORTING (enable display only while debugging)
 ----------------------------------------------------------------- */
 error_reporting(E_ALL);
-ini_set('display_errors', '1'); // ⚠️ turn OFF in production
+ini_set('display_errors', '1');
 ini_set('log_errors', '1');
 ini_set('error_log', __DIR__ . '/../../logs/user_errors.log');
 

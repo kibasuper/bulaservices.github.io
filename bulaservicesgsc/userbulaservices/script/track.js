@@ -1,4 +1,4 @@
-// script/track.js — robust same-origin resolver for track_api.php
+// script/track.js — same-origin resolver + full renderer with “Handled By” block
 
 // Build a prioritized candidate list ON THE CURRENT ORIGIN only.
 // (No cross-domain requests; avoids CORS/CSP.)
@@ -65,29 +65,96 @@ async function loadRequests() {
   renderRequests();
 }
 
-// ---------------- helpers ----------------
+// ---------------- Helpers ----------------
 function escapeHtml(str) {
-  return String(str ?? '').replace(/[&<>"']/g, m => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[m]));
+  return String(str ?? '').replace(/[&<>"']/g, m => ({"&":"&amp;","<":"&gt;",">":"&lt;","\"":"&quot;","'":"&#039;"}[m]));
 }
 
-// date-only nice (e.g., "Oct 10, 2025")
-function dateOnly(str) {
-  if (!str) return '';
-  const d = new Date(str);
-  if (isNaN(d)) return escapeHtml(str);
-  return d.toLocaleDateString('en-PH', { dateStyle: 'medium' });
+const progressWidth = {
+  waiting_approval: "20%",
+  approved: "40%",
+  incoming: "65%",
+  ongoing: "85%",
+  processing: "60%",
+  paid: "75%",
+  completed: "100%",
+  rejected: "100%"
+};
+
+const statusBadgeClass = {
+  waiting_approval: "pending",
+  approved: "approved",
+  incoming: "incoming",
+  ongoing: "ongoing",
+  processing: "processing",
+  paid: "processing",
+  completed: "completed",
+  rejected: "rejected"
+};
+
+const statusText = {
+  waiting_approval: "Waiting for Approval",
+  approved: "Approved",
+  incoming: "Incoming",
+  ongoing: "Ongoing",
+  processing: "Processing",
+  paid: "Awaiting Release",
+  completed: "Completed",
+  rejected: "Rejected"
+};
+
+const progressColor = {
+  waiting_approval: "var(--secondary)",
+  approved: "var(--primary)",
+  incoming: "var(--primary)",
+  ongoing: "var(--primary)",
+  processing: "var(--primary)",
+  paid: "var(--primary)",
+  completed: "var(--success)",
+  rejected: "var(--danger)"
+};
+
+// Map <select> values in track.php to sorter names
+function normalizeSortValue(val) {
+  switch (String(val || '').toLowerCase()) {
+    case 'newest': return 'Newest First';
+    case 'oldest': return 'Oldest First';
+    case 'type-az': return 'Request Type (A-Z)';
+    case 'type-za': return 'Request Type (Z-A)';
+    case 'status': return 'Status';
+    default: return 'Newest First';
+  }
+}
+
+// Map filter values to internal statuses
+function normalizeFilterValue(val) {
+  const v = String(val || '').toLowerCase();
+  if (v === 'pending') return 'waiting_approval';
+  if (v === 'processing') return 'processing';
+  if (v === 'completed') return 'completed';
+  if (v === 'rejected') return 'rejected';
+  return 'all';
 }
 
 // ---------------- RENDER ----------------
-function renderRequests(filterStatus = "All Statuses", searchTerm = "", sortBy = "Newest First") {
+function renderRequests(filterSelectVal = "all", searchTerm = "", sortSelectVal = "newest") {
   const container = document.getElementById('requests-list');
   if (!container) return;
 
+  const sorter = normalizeSortValue(sortSelectVal);
+  const filter = normalizeFilterValue(filterSelectVal);
+
   let data = [...requests];
 
-  if (filterStatus !== "All Statuses") {
-    const target = filterStatus.toLowerCase();
-    data = data.filter(r => (r.status || '').toLowerCase() === target);
+  if (filter !== "all") {
+    data = data.filter(r => {
+      const s = (r.status || '').toLowerCase();
+      if (filter === 'processing') {
+        // include both legacy "processing" AND "paid" (awaiting release)
+        return s === 'processing' || s === 'paid' || s === 'approved';
+      }
+      return s === filter;
+    });
   }
 
   if (searchTerm && searchTerm.trim() !== '') {
@@ -95,7 +162,7 @@ function renderRequests(filterStatus = "All Statuses", searchTerm = "", sortBy =
     data = data.filter(r => JSON.stringify(r).toLowerCase().includes(q));
   }
 
-  switch (sortBy) {
+  switch (sorter) {
     case "Newest First":
       data.sort((a,b)=> (new Date(b.submitted||0)) - (new Date(a.submitted||0)));
       break;
@@ -103,15 +170,12 @@ function renderRequests(filterStatus = "All Statuses", searchTerm = "", sortBy =
       data.sort((a,b)=> (new Date(a.submitted||0)) - (new Date(b.submitted||0)));
       break;
     case "Request Type (A-Z)":
-      data.sort((a,b)=> (a.type||'').localeCompare(b.type||''));
-      break;
+      data.sort((a,b)=> (a.type||'').localeCompare(b.type||'')); break;
     case "Request Type (Z-A)":
-      data.sort((a,b)=> (b.type||'').localeCompare(a.type||''));
-      break;
+      data.sort((a,b)=> (b.type||'').localeCompare(a.type||'')); break;
     case "Status":
-      const rank = s => ({waiting_approval:1, approved:2, processing:3, paid:4, completed:5, rejected:6})[(s||'').toLowerCase()] || 9;
-      data.sort((a,b)=> rank(a.status) - rank(b.status));
-      break;
+      const rank = s => ({waiting_approval:1, approved:2, processing:3, paid:4, ongoing:5, incoming:6, completed:7, rejected:9})[(s||'').toLowerCase()] || 99;
+      data.sort((a,b)=> rank(a.status) - rank(b.status)); break;
   }
 
   const countEl = document.querySelector('.request-count strong');
@@ -128,50 +192,6 @@ function renderRequests(filterStatus = "All Statuses", searchTerm = "", sortBy =
     return;
   }
 
-  const progressWidth = {
-    waiting_approval: "20%",
-    approved: "40%",
-    incoming: "65%",
-    ongoing: "85%",
-    processing: "60%",
-    paid: "75%",
-    completed: "100%",
-    rejected: "100%"
-  };
-
-  const statusBadgeClass = {
-    waiting_approval: "pending",
-    approved: "approved",
-    incoming: "incoming",
-    ongoing: "ongoing",
-    processing: "processing",
-    paid: "processing",
-    completed: "completed",
-    rejected: "rejected"
-  };
-
-  const statusText = {
-    waiting_approval: "Waiting for Approval",
-    approved: "Approved",
-    incoming: "Incoming",
-    ongoing: "Ongoing",
-    processing: "Processing",
-    paid: "Awaiting Release",
-    completed: "Completed",
-    rejected: "Rejected"
-  };
-
-  const progressColor = {
-    waiting_approval: "var(--secondary)",
-    approved: "var(--primary)",
-    incoming: "var(--primary)",
-    ongoing: "var(--primary)",
-    processing: "var(--primary)",
-    paid: "var(--primary)",
-    completed: "var(--success)",
-    rejected: "var(--danger)"
-  };
-
   data.forEach(request => {
     const s = (request.status || 'waiting_approval').toLowerCase();
     const width = progressWidth[s] || "25%";
@@ -184,34 +204,6 @@ function renderRequests(filterStatus = "All Statuses", searchTerm = "", sortBy =
     const officer   = request.officer || 'Barangay Staff';
     const reference = request.reference || request.id || '—';
     const estimated = request.estimated || '';
-
-    // NEW: workflow actors block (from API)
-    const actors = request.actors || {};
-    const ap = actors.approved_by;
-    const pc = actors.processed_by;
-    const rl = actors.released_by;
-
-    const workflowHtml = `
-      <div class="workflow">
-        <h3>Workflow</h3>
-        <div class="workflow-grid">
-          <div class="flow-item">
-            <span class="flow-label">Approved By</span>
-            <span class="flow-value">${ap ? `${escapeHtml(ap.name)}${ap.date ? ' • ' + dateOnly(ap.date) : ''}` : '<em>— not yet</em>'}</span>
-          </div>
-          <div class="flow-item">
-            <span class="flow-label">Processed By</span>
-            <span class="flow-value">
-              ${pc ? `${escapeHtml(pc.name)}${pc.date ? ' • ' + dateOnly(pc.date) : ''}${pc.receipt ? ' • ' + escapeHtml(pc.receipt) : ''}` : '<em>— not yet</em>'}
-            </span>
-          </div>
-          <div class="flow-item">
-            <span class="flow-label">Released By</span>
-            <span class="flow-value">${rl ? `${escapeHtml(rl.name)}${rl.date ? ' • ' + dateOnly(rl.date) : ''}` : '<em>— not yet</em>'}</span>
-          </div>
-        </div>
-      </div>
-    `;
 
     const docsHtml = Array.isArray(request.documents) && request.documents.length
       ? request.documents.map(doc => `
@@ -233,6 +225,24 @@ function renderRequests(filterStatus = "All Statuses", searchTerm = "", sortBy =
            <div class="timeline-date">${escapeHtml(submitted)}</div>
            <div class="timeline-content">Request submitted</div>
          </div>`;
+
+    // ---- NEW: “Handled By” block ----
+    const staffHtml = `
+      <div class="details-grid staff-grid">
+        <div class="detail-item">
+          <h3>Approved By</h3>
+          <p>${escapeHtml(request.approved_by_name || '— not yet')}</p>
+        </div>
+        <div class="detail-item">
+          <h3>Processed By</h3>
+          <p>${escapeHtml(request.processed_by_name || '— not yet')}</p>
+        </div>
+        <div class="detail-item">
+          <h3>Released By</h3>
+          <p>${escapeHtml(request.released_by_name || '— not yet')}</p>
+        </div>
+      </div>
+    `;
 
     const card = document.createElement('div');
     card.className = 'request-card';
@@ -265,8 +275,7 @@ function renderRequests(filterStatus = "All Statuses", searchTerm = "", sortBy =
               <div class="detail-item">
                 <h3>Estimated Completion</h3>
                 <p>${escapeHtml(estimated)}</p>
-              </div>
-            ` : ``}
+              </div>` : ``}
             <div class="detail-item">
               <h3>Assigned Officer</h3>
               <p>${escapeHtml(officer)}</p>
@@ -275,8 +284,7 @@ function renderRequests(filterStatus = "All Statuses", searchTerm = "", sortBy =
               <div class="detail-item">
                 <h3>Reference Number</h3>
                 <p>${escapeHtml(reference)}</p>
-              </div>
-            ` : ``}
+              </div>` : ``}
           </div>
 
           <div class="documents-list">
@@ -286,12 +294,15 @@ function renderRequests(filterStatus = "All Statuses", searchTerm = "", sortBy =
             </div>
           </div>
 
+          <div class="section">
+            <h3 class="section-title"><i class="fas fa-user-check"></i> Handled By</h3>
+            ${staffHtml}
+          </div>
+
           <div class="timeline">
             <h3>Processing Timeline</h3>
             ${timelineHtml}
           </div>
-
-          ${workflowHtml}
 
           <div class="request-actions">
             ${renderActionsByStatus(s)}
@@ -319,16 +330,16 @@ function renderActionsByStatus(s) {
     `;
   }
   if (s === 'rejected') {
-    return `<div class="hint">This reservation was rejected by the barangay. You may create a new reservation.</div>`;
+    return `<div class="hint">This request was rejected. You may submit a new request.</div>`;
   }
   if (s === 'incoming') {
-    return `<div class="hint">Payment received. See you at your scheduled time.</div>`;
+    return `<div class="hint">Payment received. Please wait for your schedule / release.</div>`;
   }
   if (s === 'approved') {
-    return `<div class="hint">Approved. Please proceed to payment to secure your schedule.</div>`;
+    return `<div class="hint">Approved. Please proceed to payment when instructed.</div>`;
   }
   if (s === 'ongoing') {
-    return `<div class="hint">Enjoy your session! You can request an extension at the desk.</div>`;
+    return `<div class="hint">In progress.</div>`;
   }
   if (s === 'paid') {
     return `<div class="hint">Paid at barangay. Please wait for release.</div>`;
@@ -338,7 +349,6 @@ function renderActionsByStatus(s) {
   }
   return `<div class="hint">Your request is awaiting approval by barangay staff.</div>`;
 }
-
 
 // ---------------- UI hooks ----------------
 document.addEventListener('DOMContentLoaded', () => {
@@ -359,15 +369,15 @@ ${PATH_CANDIDATES.map(p => ` - ${ORIGIN}${p}`).join('\n')}
     }
   });
 
-  const filterSel  = document.getElementById('filter-status');
-  const searchInput= document.querySelector('.search-box input');
-  const sortSel    = document.getElementById('sort-by');
+  const filterSel   = document.getElementById('filter-status');   // values: all, pending, processing, completed, rejected
+  const searchInput = document.getElementById('search-input');    // track.php input id
+  const sortSel     = document.getElementById('sort-by');         // values: newest, oldest, type-az, type-za, status
 
   const rerender = () => {
     renderRequests(
-      filterSel ? filterSel.value : "All Statuses",
+      filterSel ? filterSel.value : "all",
       searchInput ? searchInput.value : "",
-      sortSel ? sortSel.value : "Newest First"
+      sortSel ? sortSel.value : "newest"
     );
   };
 

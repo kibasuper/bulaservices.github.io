@@ -16,30 +16,22 @@ const typeSel   = document.getElementById('service-type');
 let transactionsData = {};   // keyed by payment_id
 let lastRenderedRows = [];   // for export/print
 let pollTimer = null;
-let lastDigest = '';         // hash of last data to avoid pointless re-render
-let currentTransaction = null; // tracks the item opened in the modal
+let lastDigest = '';
+let currentTransaction = null;
 
 document.addEventListener('DOMContentLoaded', function () {
-  fetchTransactions(true); // initial
+  fetchTransactions(true);
 
-  // Close modals
   closeModalButtons.forEach(btn => btn.addEventListener('click', closeAllModals));
   if (closeDetailsBtn) closeDetailsBtn.addEventListener('click', closeAllModals);
-  window.addEventListener('click', e => {
-    if (e.target === transactionModal) closeAllModals();
-  });
+  window.addEventListener('click', e => { if (e.target === transactionModal) closeAllModals(); });
 
-  // Actions
-  if (exportBtn) exportBtn.addEventListener('click', exportToExcel);
-  if (printReceiptBtn) printReceiptBtn.addEventListener('click', printReceipt);
-  if (applyFiltersBtn) applyFiltersBtn.addEventListener('click', () => fetchTransactions(true));
+  exportBtn?.addEventListener('click', exportToExcel);
+  printReceiptBtn?.addEventListener('click', printReceipt);
+  applyFiltersBtn?.addEventListener('click', () => fetchTransactions(true));
 
-  // Refetch when filters change (and restart the poller)
-  [periodSel, statusSel, typeSel].forEach(sel => {
-    sel?.addEventListener('change', () => fetchTransactions(true));
-  });
+  [periodSel, statusSel, typeSel].forEach(sel => sel?.addEventListener('change', () => fetchTransactions(true)));
 
-  // Start live polling (every 7s)
   startPolling();
 });
 
@@ -63,37 +55,26 @@ function renderStatus(status) {
   const normalized = String(status).toLowerCase();
   let cls = 'status-default';
   switch (normalized) {
-    case 'completed': cls = 'status-completed'; break;
+    case 'completed':
+    case 'complete': cls = 'status-completed'; break; // normalize "complete"
     case 'paid':      cls = 'status-approved';  break;
     case 'pending':   cls = 'status-pending';   break;
     case 'approved':  cls = 'status-approved';  break;
     case 'rejected':  cls = 'status-rejected';  break;
     case 'cancelled': cls = 'status-cancelled'; break;
   }
-  return `<span class="status-badge ${cls}">${capitalize(status)}</span>`;
+  const label = (normalized === 'complete') ? 'Completed' : capitalize(status);
+  return `<span class="status-badge ${cls}">${label}</span>`;
 }
 
-function renderModalChip(status) {
-  const s = (status || '').toLowerCase();
-  const map = { completed:'completed', approved:'approved', rejected:'rejected', pending:'pending' };
-  const k = map[s] || 'pending';
-  return `<span class="badge ${k}">${capitalize(s || 'pending')}</span>`;
-}
+function capitalize(s) { if (!s) return ''; s = String(s); return s.charAt(0).toUpperCase() + s.slice(1); }
 
-function capitalize(s) {
-  if (!s) return '';
-  s = String(s);
-  return s.charAt(0).toUpperCase() + s.slice(1);
-}
-
-// Full date+time (used for table + export)
 function formatDate(dateStr) {
   const d = new Date(dateStr);
   if (isNaN(d.getTime())) return '';
   return d.toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' });
 }
 
-// Date only (used in Transaction Details modal)
 function formatDateOnly(dateStr) {
   const d = new Date(dateStr);
   if (isNaN(d.getTime())) return '';
@@ -114,11 +95,8 @@ function closeAllModals() {
   }
 }
 
-// Build range only if user selected a period that implies dates
 function getRangeFromPeriod(label) {
-  if (!label || label.toLowerCase() === 'all time') {
-    return { from: '', to: '', allTime: true };
-  }
+  if (!label || label.toLowerCase() === 'all time') return { from: '', to: '', allTime: true };
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   let from = new Date(today), to = new Date(today);
@@ -138,10 +116,7 @@ function getRangeFromPeriod(label) {
     }
     default: return { from: '', to: '', allTime: true };
   }
-  return {
-    from: from.toISOString().slice(0,10),
-    to: to.toISOString().slice(0,10),
-  };
+  return { from: from.toISOString().slice(0,10), to: to.toISOString().slice(0,10) };
 }
 
 function mapStatusFilter(label) {
@@ -179,10 +154,7 @@ async function fetchTransactions(resetDigest = false) {
   const type   = mapTypeFilter(typeSel?.value);
 
   const params = new URLSearchParams();
-  if (!range.allTime && range.from && range.to) {
-    params.set('from', range.from);
-    params.set('to', range.to);
-  }
+  if (!range.allTime && range.from && range.to) { params.set('from', range.from); params.set('to', range.to); }
   if (status !== 'all') params.set('status', status);
   if (type !== 'all')   params.set('type', type);
 
@@ -190,15 +162,7 @@ async function fetchTransactions(resetDigest = false) {
 
   try {
     const res = await fetch(url, { cache: 'no-store' });
-    const data = await res.json(); // array
-    if (Array.isArray(data)) {
-      const counts = data.reduce((acc, r) => {
-        const k = (r.payment_status || 'unknown').toLowerCase();
-        acc[k] = (acc[k] || 0) + 1; return acc;
-      }, {});
-      console.log('[transactions] fetched:', data.length, counts, { url });
-    }
-
+    const data = await res.json();
     if (!Array.isArray(data)) return;
 
     const d = digestRows(data);
@@ -214,10 +178,7 @@ async function fetchTransactions(resetDigest = false) {
 
 function renderTransactions(data) {
   const tbody = findTbody();
-  if (!tbody) {
-    console.warn('Transactions tbody not found. Adjust findTbody() to match your HTML.');
-    return;
-  }
+  if (!tbody) { console.warn('Transactions tbody not found.'); return; }
 
   tbody.innerHTML = '';
   transactionsData = {};
@@ -227,8 +188,6 @@ function renderTransactions(data) {
     transactionsData[tr.payment_id] = tr;
 
     const serviceTypes = (tr.requests || []).map(r => r.service_type).join(', ') || '—';
-
-    // PRIMARY REF: first non-empty reference from line items (or "Multiple" if mixed)
     const refs = (tr.requests || []).map(r => r.transaction_no).filter(Boolean);
     const uniqueRefs = Array.from(new Set(refs));
     const primaryRef = uniqueRefs[0] || '—';
@@ -236,8 +195,8 @@ function renderTransactions(data) {
 
     const row = document.createElement('tr');
     row.innerHTML = `
-      <td class="transaction-code">${showRef}</td>              <!-- Reference # -->
-      <td>${tr.receipt_number || '—'}</td>                     <!-- Receipt # -->
+      <td class="transaction-code">${showRef}</td>
+      <td>${tr.receipt_number || '—'}</td>
       <td>${formatDate(tr.payment_date || '')}</td>
       <td>${tr.customer_name || ''}</td>
       <td><span class="service-badge">${serviceTypes}</span></td>
@@ -252,15 +211,18 @@ function renderTransactions(data) {
     tbody.appendChild(row);
   });
 
-  document.querySelectorAll('.view-btn').forEach(btn => {
-    btn.addEventListener('click', () => viewTransaction(btn.dataset.id));
-  });
+  document.querySelectorAll('.view-btn').forEach(btn => btn.addEventListener('click', () => viewTransaction(btn.dataset.id)));
 
-  if (!data || data.length === 0) {
-    showToast('No transactions for the selected filters');
-  }
+  if (!data || data.length === 0) showToast('No transactions for the selected filters');
 }
 
+// ===== small DOM util for rows =====
+function toggleRowByFieldId(id, show) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const row = el.closest('.detail-row') || el.parentElement;
+  if (row) row.style.display = show ? '' : 'none';
+}
 
 // ===== Modal (view) =====
 function viewTransaction(paymentId) {
@@ -268,49 +230,92 @@ function viewTransaction(paymentId) {
   if (!tr) return;
   currentTransaction = tr;
 
-  // (Optional) status chip if you place it elsewhere
-  const modalStatusChip = renderModalChip(tr.payment_status);
-
-  // references list (all)
   const refs = (tr.requests || []).map(r => r.transaction_no).filter(Boolean);
   const uniqueRefs = Array.from(new Set(refs));
   const refDisplay = uniqueRefs.length
     ? uniqueRefs.map(r => `<code style="background:#f1f5f9;border-radius:6px;padding:2px 6px">${r}</code>`).join(' ')
     : '—';
 
-  // Services table rows
-  const servicesHTML = (tr.requests || []).map(r => `
-    <tr>
-      <td>${r.transaction_no || ''}</td>
-      <td>${r.service_type || ''}</td>
-      <td>${r.description || ''}</td>
-      <td>${renderStatus(r.status || '')}</td>
-    </tr>
-  `).join('');
+  // Services table rows (normalize 'complete' → 'Completed')
+  const servicesHTML = (tr.requests || []).map(r => {
+    const raw = (r.status || '').toLowerCase();
+    const display = raw === 'complete' ? 'Completed' : capitalize(r.status || '');
+    const badge = renderStatus(raw || '');
+    // replace badge label if needed
+    const fixedBadge = raw === 'complete' ? badge.replace(/>Complete</, '>Completed<') : badge;
+    return `
+      <tr>
+        <td>${r.transaction_no || ''}</td>
+        <td>${r.service_type || ''}</td>
+        <td>${r.description || ''}</td>
+        <td>${fixedBadge}</td>
+      </tr>
+    `;
+  }).join('');
 
-  // Fill modal fields (date-only formatting here)
+  // Fill modal meta (date-only here)
   setText('detail-id', tr.receipt_number || '—');
-  setText('detail-date', formatDateOnly(tr.payment_date || '')); // DATE ONLY
+  setText('detail-date', formatDateOnly(tr.payment_date || ''));
   setText('detail-customer', tr.customer_name || '—');
   setText('detail-contact', tr.customer_contact || '—');
   setText('detail-amount', `₱${Number(tr.total_amount || 0).toFixed(2)}`);
-  setText('detail-payment', tr.payment_method || 'Cash'); // if present
+  setText('detail-payment', tr.payment_method || 'Cash');
   setText('detail-processor', tr.processed_by_name || '-');
   setHTML('detail-ref', refDisplay);
 
-  // Field below "Processed By:" is "Approved By:" — date-only on the timestamp
+  // Build approver strings (DATE ONLY)
   const approver = tr.approved_by_name || '—';
-  const approvAt = tr.approved_at ? formatDateOnly(tr.approved_at) : ''; // DATE ONLY
-  setText('detail-status', approver + (approvAt ? ` • ${approvAt}` : ''));
+  const approvAt = tr.approved_at ? formatDateOnly(tr.approved_at) : '';
+  const approvedText = approver + (approvAt ? ` • ${approvAt}` : '');
 
-  // Released By summary — date-only on the timestamp
+  // Released By (DATE ONLY)
   const released = tr.released_by_summary || '—';
-  const relAt    = tr.released_at_summary ? formatDateOnly(tr.released_at_summary) : ''; // DATE ONLY
-  setText('detail-releasedby', released + (relAt ? ` • ${relAt}` : ''));
+  const relAt    = tr.released_at_summary ? formatDateOnly(tr.released_at_summary) : '';
+  const releasedText = released + (relAt ? ` • ${relAt}` : '');
 
+  // Inject line items
   const svcTbody = document.getElementById('detail-service');
   if (svcTbody) {
     svcTbody.innerHTML = servicesHTML || '<tr><td colspan="4" style="text-align:center;color:#666;">No line items</td></tr>';
+  }
+
+  // ---- Decide layout per your rules ----
+  const reqs = Array.isArray(tr.requests) ? tr.requests : [];
+  const isGym = (x) => String(x?.service_type || '').toLowerCase().includes('gym');
+  const gymOnly  = reqs.length > 0 && reqs.every(isGym);
+  const certOnly = reqs.length > 0 && reqs.every(r => !isGym(r));
+
+  // Reset visibility (default show all)
+  toggleRowByFieldId('detail-approvedby', true);
+  toggleRowByFieldId('detail-status', true);
+  toggleRowByFieldId('detail-releasedby', true);
+
+  if (certOnly) {
+    // CERTIFICATE:
+    // Released By: shown
+    // Status: shows approver • date
+    // Approved By: hidden
+    setText('detail-status', approvedText);   // label is "Status:"
+    setText('detail-releasedby', releasedText);
+    toggleRowByFieldId('detail-approvedby', false);
+    toggleRowByFieldId('detail-status', true);
+    toggleRowByFieldId('detail-releasedby', true);
+  } else if (gymOnly) {
+    // GYM:
+    // Approved By: shown (approver • date)
+    // Hide Status & Released By
+    setText('detail-approvedby', approvedText);
+    toggleRowByFieldId('detail-approvedby', true);
+    toggleRowByFieldId('detail-status', false);
+    toggleRowByFieldId('detail-releasedby', false);
+  } else {
+    // MIXED: keep previous behavior (show all)
+    setText('detail-approvedby', approvedText);
+    setText('detail-status', capitalize(tr.payment_status || '') || '—');
+    setText('detail-releasedby', releasedText);
+    toggleRowByFieldId('detail-approvedby', true);
+    toggleRowByFieldId('detail-status', true);
+    toggleRowByFieldId('detail-releasedby', true);
   }
 
   if (transactionModal) {
@@ -319,28 +324,19 @@ function viewTransaction(paymentId) {
   }
 }
 
-function setText(id, text) {
-  const el = document.getElementById(id);
-  if (el) el.textContent = text;
-}
-function setHTML(id, html) {
-  const el = document.getElementById(id);
-  if (el) el.innerHTML = html;
-}
+function setText(id, text) { const el = document.getElementById(id); if (el) el.textContent = text; }
+function setHTML(id, html) { const el = document.getElementById(id); if (el) el.innerHTML = html; }
 
 // ===== Export / Print =====
 function exportToExcel() {
-  if (!Array.isArray(lastRenderedRows) || lastRenderedRows.length === 0) {
-    showToast('Nothing to export');
-    return;
-  }
+  if (!Array.isArray(lastRenderedRows) || lastRenderedRows.length === 0) { showToast('Nothing to export'); return; }
   const rows = lastRenderedRows.map(tr => {
     const refs = (tr.requests || []).map(r => r.transaction_no).filter(Boolean);
     const uniqueRefs = Array.from(new Set(refs));
     return {
       'Reference(s)': uniqueRefs.join(', ') || '',
       'Receipt #': tr.receipt_number || '',
-      'Date & Time': formatDate(tr.payment_date || ''), // keep time in export
+      'Date & Time': formatDate(tr.payment_date || ''),
       'Customer': tr.customer_name || '',
       'Service Items': (tr.requests || []).map(r => r.service_type).join(', '),
       'Amount': Number(tr.total_amount || 0),
@@ -364,28 +360,17 @@ function printReceipt() {
   const receiptNo = document.getElementById('detail-id')?.textContent || '';
   if (!receiptNo) { showToast('Open a transaction first'); return; }
 
-  const dateStr    = document.getElementById('detail-date').textContent; // comes from modal (date-only)
+  const dateStr    = document.getElementById('detail-date').textContent;
   const customer   = document.getElementById('detail-customer').textContent;
   const contact    = document.getElementById('detail-contact').textContent;
   const amount     = document.getElementById('detail-amount').textContent;
   const payment    = document.getElementById('detail-payment').textContent;
   const processor  = document.getElementById('detail-processor').textContent;
 
-  const statusEl   = currentTransaction?.payment_status
-    ? capitalize(String(currentTransaction.payment_status))
-    : '—';
+  const approvedBy = document.getElementById('detail-approvedby')?.textContent || '—';
+  const releasedBy = document.getElementById('detail-releasedby')?.textContent || '—';
 
-  const approvedBy = document.getElementById('detail-status')
-    ? document.getElementById('detail-status').textContent
-    : '—';
-
-  const releasedBy = document.getElementById('detail-releasedby')
-    ? document.getElementById('detail-releasedby').textContent
-    : '—';
-
-  const rowsHtml = Array.from(document.querySelectorAll('#detail-service tr'))
-    .map(tr => `<tr>${tr.innerHTML}</tr>`).join('');
-
+  const rowsHtml = Array.from(document.querySelectorAll('#detail-service tr')).map(tr => `<tr>${tr.innerHTML}</tr>`).join('');
   const refHtml = document.getElementById('detail-ref')?.textContent || '';
 
   const html = `
@@ -410,11 +395,10 @@ function printReceipt() {
         <p><strong>Date:</strong> ${dateStr}</p>
         <p><strong>Customer:</strong> ${customer}</p>
         <p><strong>Contact:</strong> ${contact}</p>
-        <p><strong>Status:</strong> ${statusEl}</p>
-        <p><strong>Approved By:</strong> ${approvedBy}</p>
-        <p><strong>Released By:</strong> ${releasedBy}</p>
         <p><strong>Payment Method:</strong> ${payment}</p>
         <p><strong>Processed By:</strong> ${processor}</p>
+        <p><strong>Approved By:</strong> ${approvedBy}</p>
+        <p><strong>Released By:</strong> ${releasedBy}</p>
       </div>
       <table>
         <thead>

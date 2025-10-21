@@ -11,6 +11,48 @@ function calculateFee() {
     if (feeEl) feeEl.textContent = fee.toFixed(2);
 }
 
+// confirm
+function prettyConfirm({ title, text, okText = 'Yes', cancelText = 'Cancel' } = {}) {
+  return new Promise((resolve) => {
+    const root = document.getElementById('uiConfirm');
+    const titleEl = document.getElementById('uiConfirmTitle');
+    const okBtn = document.getElementById('uiConfirmOk');
+    const cancelBtn = document.getElementById('uiConfirmCancel');
+
+    if (!root || !titleEl || !okBtn || !cancelBtn) return resolve(false);
+
+    // Update copy
+    if (title) titleEl.textContent = title;
+    const txtEl = root.querySelector('.ui-confirm__text');
+    if (text && txtEl) txtEl.textContent = text;
+    okBtn.textContent = okText;
+    cancelBtn.textContent = cancelText;
+
+    // Open
+    root.classList.add('is-open');
+
+    // Handlers
+    const close = (value) => {
+      root.classList.remove('is-open');
+      okBtn.removeEventListener('click', onOk);
+      cancelBtn.removeEventListener('click', onCancel);
+      root.removeEventListener('click', onBackdrop);
+      document.removeEventListener('keydown', onEsc);
+      resolve(value);
+    };
+    const onOk = () => close(true);
+    const onCancel = () => close(false);
+    const onBackdrop = (e) => { if (e.target === root) close(false); };
+    const onEsc = (e) => { if (e.key === 'Escape') close(false); };
+
+    okBtn.addEventListener('click', onOk);
+    cancelBtn.addEventListener('click', onCancel);
+    root.addEventListener('click', onBackdrop);
+    document.addEventListener('keydown', onEsc);
+  });
+}
+
+
 // Validate form section
 function validateSection(sectionId) {
     let isValid = true;
@@ -257,10 +299,14 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // Cancel button
-    document.getElementById('cancelBtn')?.addEventListener('click', function() {
-        if (confirm('Are you sure you want to cancel? Any unsaved changes will be lost.')) {
-            window.location.href = 'home.php';
-        }
+    document.getElementById('cancelBtn')?.addEventListener('click', async function () {
+        const confirmed = await prettyConfirm({
+            title: 'Cancel application?',
+            text: 'Are you sure you want to cancel? Any unsaved changes will be lost.',
+            okText: 'Yes, cancel',
+            cancelText: 'Stay'
+        });
+        if (confirmed) window.location.href = 'home.php';
     });
 
     // Form submission

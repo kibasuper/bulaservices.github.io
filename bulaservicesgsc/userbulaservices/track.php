@@ -7,8 +7,8 @@ require_once __DIR__ . '/server/file_urls.php';
 
 ensureUserAccess();
 
-ini_set('display_errors', '1');
-ini_set('display_startup_errors', '1');
+ini_set('display_errors', '0');
+ini_set('display_startup_errors', '0');
 error_reporting(E_ALL);
 
 // Current user (safe defaults)
@@ -203,10 +203,11 @@ $picUrl = $currentUser['profilePic'] ?: './pics/profile-placeholder.jpg';
         });
     </script>
 
-    <script>
-        // just in case you want name in JS later
-        window.USER_NAME = <?= json_encode($fullName) ?>;
-    </script>
+  <script>
+  window.USER_NAME = <?= json_encode($currentUser['name'] ?? '') ?>;
+</script>
+
+
     <script src="./script/track.js"></script>
 </body>
 </html>

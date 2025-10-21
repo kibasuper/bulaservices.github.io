@@ -4,3 +4,6 @@
 [15-Sep-2025 14:53:50 Etc/UTC] Get User Info Error: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'u.year_started_residing' in 'field list'
 [13-Oct-2025 11:28:52 Etc/UTC] Get User Info Error: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'u.year_started_residing' in 'field list'
 [18-Oct-2025 10:48:22 Etc/UTC] Get User Info Error: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'u.year_started_residing' in 'field list'
+[20-Oct-2025 08:40:47 Etc/UTC] Get User Info Error: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'u.year_started_residing' in 'field list'
+[20-Oct-2025 08:40:50 Etc/UTC] Get User Info Error: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'u.year_started_residing' in 'field list'
+[20-Oct-2025 09:09:02 Etc/UTC] Get User Info Error: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'u.year_started_residing' in 'field list'

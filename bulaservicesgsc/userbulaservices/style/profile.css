@@ -341,7 +341,6 @@ body {
     margin-top: 1rem;
 }
 
-<style>
   /* Toast host (top-right) */
   .toast-host{
     position:fixed; top:1rem; right:1rem; z-index:10000;
@@ -380,4 +379,3 @@ body {
   }
   @keyframes snack-in { from {opacity:0; transform:translate(-50%,6px)} to {opacity:1; transform:translate(-50%,0)} }
   .snackbar.hide{ animation:toast-out .18s ease-in both }
-</style>

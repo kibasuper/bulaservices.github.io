@@ -56,11 +56,12 @@ document.addEventListener('DOMContentLoaded', () => {
         else if (!e.shiftKey && document.activeElement === last) { first.focus(); e.preventDefault(); }
       }
     });
-    // When shown, focus card
     const _show = window.showSuccessModal;
     window.showSuccessModal = function(title, message){
-      document.getElementById('successTitle').textContent = title || 'Success';
-      document.getElementById('successMessage').textContent = message || '';
+      const t = document.getElementById('successTitle');
+      const m = document.getElementById('successMessage');
+      if (t) t.textContent = title || 'Success';
+      if (m) m.textContent = message || '';
       successModal.classList.add('active');
       setTimeout(()=>card?.focus?.(), 0);
       if (_show && _show !== window.showSuccessModal) try { _show(title, message); } catch {}
@@ -159,7 +160,6 @@ function removeRowByRef(ref) {
       break;
     }
   }
-  // If table became empty, show placeholder row
   const tbody = document.getElementById('requestsTableBody');
   if (tbody && tbody.children.length === 0) {
     const tr = document.createElement('tr');
@@ -168,7 +168,7 @@ function removeRowByRef(ref) {
   }
 }
 
-// =================== REVIEW MODAL (styled .modal-card) ===================
+// =================== REVIEW MODAL ===================
 window.reviewRequest = async function(ref) {
   try {
     const res = await apiPost({ action: 'get_by_reference', reference: ref });
@@ -179,7 +179,16 @@ window.reviewRequest = async function(ref) {
       .join('');
 
     const status = (r.status || '').toLowerCase();
-    const isTerminal = ['completed', 'cancelled'].includes(status);
+    const isTerminal = ['completed', 'cancelled', 'canceled', 'rejected'].includes(status);
+
+    // Transaction Details block (names + dates; date only)
+    const trans = r.transaction || {};
+    const approvedBy = trans.approved_by_name || '—';
+    const approvedOn = trans.approved_at ? niceDateOnly(trans.approved_at) : '—';
+    const processedBy = trans.processed_by_name || '—';
+    const processedOn = trans.processed_at ? niceDateOnly(trans.processed_at) : '—';
+    const releasedBy = trans.released_by_name || '—';
+    const releasedOn = trans.released_at ? niceDateOnly(trans.released_at) : '—';
 
     let actionsHtml = `
       <button class="modal-btn close-btn" onclick="closeReviewModal()">
@@ -210,6 +219,7 @@ window.reviewRequest = async function(ref) {
           <h3 class="modal-title" id="gymReqTitle">GYM REQUEST #${escapeHtml(r.reference_number || '')}</h3>
           <p class="modal-subtitle">Gym Reservation Review</p>
         </div>
+
         <div class="modal-body">
           <div class="detail-row"><span class="detail-label">Full Name:</span><span class="detail-value">${escapeHtml(r.resident_name || 'N/A')}</span></div>
           <div class="detail-row"><span class="detail-label">Contact No:</span><span class="detail-value">${escapeHtml(r.contact_number || 'N/A')}</span></div>
@@ -219,7 +229,29 @@ window.reviewRequest = async function(ref) {
           <div class="detail-row"><span class="detail-label">Total:</span><span class="detail-value">₱${Number(r.total_amount || 0).toFixed(2)}</span></div>
           <div class="detail-row"><span class="detail-label">Status:</span><span class="detail-value"><span class="status-badge status-${status}">${cap(status)}</span></span></div>
           <div class="detail-row"><span class="detail-label">Reference:</span><span class="detail-value">${escapeHtml(r.reference_number || '')}</span></div>
+
+          <div class="divider"></div>
+
+          <div class="section-title">Transaction Details</div>
+          <div class="tx-grid">
+            <div class="tx-item">
+              <div class="tx-label">Approved By</div>
+              <div class="tx-value">${escapeHtml(approvedBy)}</div>
+              <div class="tx-date">${escapeHtml(approvedOn)}</div>
+            </div>
+            <div class="tx-item">
+              <div class="tx-label">Processed By</div>
+              <div class="tx-value">${escapeHtml(processedBy)}</div>
+              <div class="tx-date">${escapeHtml(processedOn)}</div>
+            </div>
+            <div class="tx-item">
+              <div class="tx-label">Released By</div>
+              <div class="tx-value">${escapeHtml(releasedBy)}</div>
+              <div class="tx-date">${escapeHtml(releasedOn)}</div>
+            </div>
+          </div>
         </div>
+
         <div class="modal-actions">
           ${actionsHtml}
         </div>
@@ -235,10 +267,9 @@ window.reviewRequest = async function(ref) {
   }
 };
 
-// =================== REJECT FLOW — Styled Confirm Modal ===================
+// =================== REJECT FLOW ===================
 let _pendingReject = null;
 
-// Build once, reuse
 function ensureConfirmRejectModal() {
   let el = document.getElementById('confirmRejectModal');
   if (!el) {
@@ -247,7 +278,6 @@ function ensureConfirmRejectModal() {
     el.className = 'modal-overlay';
     document.body.appendChild(el);
   }
-  // Fill with styled content
   el.innerHTML = `
     <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="confirmRejectTitle" aria-describedby="confirmRejectMsg" tabindex="-1">
       <div class="modal-header">
@@ -264,11 +294,7 @@ function ensureConfirmRejectModal() {
       </div>
     </div>
   `;
-
-  // Backdrop
   el.addEventListener('click', (e) => { if (e.target === e.currentTarget) closeRejectConfirm(); });
-
-  // ESC + focus trap
   document.addEventListener('keydown', (e) => {
     if (!el.classList.contains('active')) return;
     if (e.key === 'Escape') closeRejectConfirm();
@@ -280,19 +306,15 @@ function ensureConfirmRejectModal() {
       else if (!e.shiftKey && document.activeElement === last) { first.focus(); e.preventDefault(); }
     }
   });
-
   return el;
 }
 
 window.openRejectConfirm = function(id, ref) {
   _pendingReject = { id: Number(id), ref: String(ref || '') };
   const el = ensureConfirmRejectModal();
-
-  // personalize subtitle with ref
   const sub = el.querySelector('#confirmRejectSub');
   if (sub) sub.textContent = `Reject reservation #${_pendingReject.ref}?`;
 
-  // rebind buttons (fresh listeners)
   const okBtnOld = el.querySelector('#rejectOk');
   const okBtnNew = okBtnOld.cloneNode(true);
   okBtnOld.parentNode.replaceChild(okBtnNew, okBtnOld);
@@ -399,20 +421,23 @@ function escapeAttr(str) {
 }
 
 function escapeJs(str) {
-  return String(str)
-    .replace(/\\/g, '\\\\')
-    .replace(/'/g, "\\'")
-    .replace(/"/g, '\\"');
+  return String(str).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"');
 }
 
 function formatDate(dateStr) {
   const d = new Date(dateStr);
-  return isNaN(d) ? '—' : d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+  return isNaN(d) ? '—' : d.toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+function niceDateOnly(dateTimeStr){
+  // returns YYYY-MM-DD in locale format (no time)
+  const d = new Date(dateTimeStr);
+  return isNaN(d) ? '—' : d.toLocaleDateString('en-PH', { year:'numeric', month:'short', day:'2-digit' });
 }
 
 function safeDate(dateStr) {
   const d = new Date(`${dateStr}T00:00:00`);
-  return isNaN(d) ? '—' : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return isNaN(d) ? '—' : d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 // Optional: navigation

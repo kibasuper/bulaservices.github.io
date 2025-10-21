@@ -269,6 +269,20 @@ try {
         </div>
     </div>
 
+            <!-- Confirm Modal -->
+    <div id="uiConfirm" class="ui-confirm" aria-hidden="true">
+    <div class="ui-confirm__dialog" role="dialog" aria-modal="true" aria-labelledby="uiConfirmTitle">
+        <div class="ui-confirm__icon"><i class="fas fa-circle-exclamation"></i></div>
+        <h3 id="uiConfirmTitle" class="ui-confirm__title">Cancel application?</h3>
+        <p class="ui-confirm__text">Are you sure you want to cancel? Any unsaved changes will be lost.</p>
+        <div class="ui-confirm__actions">
+        <button type="button" id="uiConfirmCancel" class="btn btn-secondary">Stay</button>
+        <button type="button" id="uiConfirmOk" class="btn btn-danger">Yes, cancel</button>
+        </div>
+    </div>
+    </div>
+
+
     <!-- Pass the dynamic price to the JS -->
     <script>
       window.BC_PRICE = <?= json_encode((float)$BC_PRICE) ?>;
