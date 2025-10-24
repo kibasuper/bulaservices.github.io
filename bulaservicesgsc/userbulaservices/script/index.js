@@ -489,3 +489,52 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   });
 })();
+
+  (function(){
+    const el = document.getElementById('contact');
+    if (!el) return;
+
+    // Sanitize on input 
+    const sanitize = () => {
+      el.value = el.value.replace(/\D+/g, '').slice(0, 11);
+    };
+    el.addEventListener('input', sanitize);
+
+    // Block non-digits on keypress
+    el.addEventListener('keypress', (e) => {
+      if (e.key.length === 1 && !/[0-9]/.test(e.key)) e.preventDefault();
+    });
+
+    // Optional: clean pasted content before it hits the field
+    el.addEventListener('paste', (e) => {
+      e.preventDefault();
+      const text = (e.clipboardData || window.clipboardData).getData('text') || '';
+      const digits = text.replace(/\D+/g, '').slice(0, 11);
+      document.execCommand('insertText', false, digits);
+    });
+  })();
+
+    (function () {
+    const select = document.getElementById('purok');
+    const items  = document.querySelectorAll('.purok-list-items .purok-list-item');
+    if (!select || !items.length) return;
+
+    // Build a map
+    const names = {};
+    items.forEach(node => {
+      const text = (node.textContent || '').trim();
+      const m = text.match(/^Purok\s*(\d+)\s*:\s*(.+)$/i);
+      if (m) names[m[1]] = m[2].trim();
+    });
+
+    // Update select option labels; keep numeric values unchanged
+    Array.from(select.options).forEach(opt => {
+      if (!opt.value) return; // skip placeholder "Select"
+      const n = names[opt.value];
+      if (n) opt.textContent = `Purok ${opt.value} — ${n}`;
+    });
+
+    // Remove/hide the floating dialog + trigger button since the info is now in the dropdown
+    document.getElementById('purokListDialog')?.remove();
+    document.getElementById('showPurokList')?.remove();
+  })();

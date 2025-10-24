@@ -12,8 +12,9 @@ if (!isset($_SESSION['admin_id'])) {
 
 try {
   $db = getDBConnection();
+  if ($db instanceof PDO) { $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION); }
 
-  $raw = file_get_contents('php://input');
+  $raw   = file_get_contents('php://input');
   $input = $raw ? json_decode($raw, true) : null;
   if (!$input || !is_array($input)) throw new Exception('Invalid payload');
 
@@ -26,7 +27,7 @@ try {
     throw new Exception('Missing required payment data');
   }
 
-  // Global customer fields (may help resolve user)
+  // Optional customer hints from POS
   $globalEmail   = trim((string)($input['email'] ?? ''));
   $globalName    = trim((string)($input['customerName'] ?? ''));
   $globalContact = trim((string)($input['customerContact'] ?? ''));
@@ -38,12 +39,12 @@ try {
     return [ $parts[0] ?? $full, $parts[1] ?? '' ];
   };
 
-  // Resolve user id for this cart
+  // Resolve one user id for the whole payment
   $resolveUserId = function(PDO $db, array $item) use ($splitName, $globalEmail, $globalName, $globalContact): int {
     $id  = isset($item['id'])   ? (int)$item['id']   : 0;
     $ref = isset($item['code']) ? (string)$item['code'] : '';
 
-    // 1) Direct from service_requests (id or reference)
+    // Prefer SR linkage
     if ($id > 0) {
       $stmt = $db->prepare("SELECT user_id FROM service_requests WHERE id = ? LIMIT 1");
       $stmt->execute([$id]);
@@ -57,7 +58,7 @@ try {
       if ($uid) return (int)$uid;
     }
 
-    // 2) Pull name/contact from reservations (id or ref)
+    // Fallback: reservation (for name/contact only)
     $res = null;
     if ($id > 0) {
       $stmt = $db->prepare("SELECT resident_name, contact_number FROM reservations WHERE id = ? LIMIT 1");
@@ -73,11 +74,10 @@ try {
     $residentName  = trim((string)($res['resident_name'] ?? ''));
     $contactNumber = trim((string)($res['contact_number'] ?? ''));
 
-    // Prefer global overrides if locals are empty
     if ($globalName !== '')    $residentName  = $residentName  !== '' ? $residentName  : $globalName;
     if ($globalContact !== '') $contactNumber = $contactNumber !== '' ? $contactNumber : $globalContact;
 
-    // 3) Match by email
+    // Email lookup
     if ($globalEmail !== '') {
       $stmt = $db->prepare("SELECT id FROM users WHERE email = ? LIMIT 1");
       $stmt->execute([$globalEmail]);
@@ -85,7 +85,7 @@ try {
       if ($u) return (int)$u;
     }
 
-    // 4) Match by contact
+    // Contact lookup
     if ($contactNumber !== '') {
       $stmt = $db->prepare("SELECT id FROM users WHERE contact_number = ? LIMIT 1");
       $stmt->execute([$contactNumber]);
@@ -93,24 +93,18 @@ try {
       if ($u) return (int)$u;
     }
 
-    // 5) Create new user
+    // Create lightweight user
     if ($residentName === '') $residentName = 'Walk-in Customer';
     [$first, $last] = $splitName($residentName);
-    $insEmail   = $globalEmail !== '' ? $globalEmail : '';
-    $insContact = $contactNumber !== '' ? $contactNumber : ($globalContact !== '' ? $globalContact : '');
-    if ($insContact === null) $insContact = '';
-    $insAddr    = '';
-
     $stmt = $db->prepare("
       INSERT INTO users (first_name, last_name, email, contact_number, address)
-      VALUES (?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, '')
     ");
-    $stmt->execute([$first, $last, $insEmail, $insContact, $insAddr]);
+    $stmt->execute([$first, $last, $globalEmail, $contactNumber]);
 
     return (int)$db->lastInsertId();
   };
 
-  // Resolve a single resident (all items must map to same user)
   $userIds = [];
   foreach ($items as $it) $userIds[] = $resolveUserId($db, $it);
   $userIds = array_values(array_unique(array_map('intval', $userIds)));
@@ -124,25 +118,30 @@ try {
   $cashierId = (int)$_SESSION['admin_id'];
   $changeAmt = max(0, $cashGiven - $totalAmount);
 
+  // Begin TX
   $db->beginTransaction();
 
-  // payments insert
-  $stmt = $db->prepare("INSERT INTO payments (receipt_number, user_id, cashier_id, total_amount, cash_given, change_amount) VALUES (?, ?, ?, ?, ?, ?)");
+  // Create payment header
+  $stmt = $db->prepare("
+    INSERT INTO payments (receipt_number, user_id, cashier_id, total_amount, cash_given, change_amount)
+    VALUES (?, ?, ?, ?, ?, ?)
+  ");
   $stmt->execute([$receiptNumber, $userId, $cashierId, $totalAmount, $cashGiven, $changeAmt]);
   $paymentId = (int)$db->lastInsertId();
 
-  $stmtItem = $db->prepare("INSERT INTO payment_items (payment_id, request_type, request_id, amount) VALUES (?, ?, ?, ?)");
+  // Stmts
+  $stmtItem  = $db->prepare("
+    INSERT INTO payment_items (payment_id, request_type, request_id, amount)
+    VALUES (?, ?, ?, ?)
+  ");
 
-  // mark SERVICE REQUESTS as PAID
   $stmtPaySR = $db->prepare("
     UPDATE service_requests
-       SET status = 'paid',
-           paid_at = NOW(),
+       SET paid_at = NOW(),
            processed_date = COALESCE(processed_date, NOW())
      WHERE id = ?
   ");
 
-  // mark RESERVATIONS as PAID
   $stmtPayRS = $db->prepare("
     UPDATE reservations
        SET status = 'paid',
@@ -150,17 +149,41 @@ try {
      WHERE id = ?
   ");
 
+  $VALID_SR_TYPES = [
+    'barangay_clearance','business_permit','indigency','residency',
+    'cedula','ivs','low_income','proof_income','gym','other'
+  ];
+
+  $labelToKey = [
+    'Barangay Clearance'          => 'barangay_clearance',
+    'Certificate of Indigency'    => 'indigency',
+    'Certificate of Residency'    => 'residency',
+    'Business Permit'             => 'business_permit',
+    'Community Tax Certificate'   => 'cedula',
+    'Community Tax Certificate (Cedula)' => 'cedula',
+    'IVS'                         => 'ivs',
+    'Low Income Certificate'      => 'low_income',
+    'Proof of Income Certificate' => 'proof_income',
+    'Gym Reservation'             => 'gym_reservation',
+    'Gym Service'                 => 'gym',
+    'Other Service'               => 'other',
+  ];
+
   foreach ($items as $it) {
     $id   = isset($it['id'])   ? (int)$it['id']   : 0;
     $ref  = isset($it['code']) ? (string)$it['code'] : '';
-    $type = strtolower(str_replace(' ', '_', (string)($it['type'] ?? '')));
     $amt  = (float)($it['amount'] ?? 0);
 
-    // Decide origin: reservations if code starts with RES- or type says gym_reservation; else service_requests
-    $isReservation = (stripos($ref, 'RES-') === 0) || ($type === 'gym_reservation');
+    $typeKey = strtolower(trim((string)($it['request_type'] ?? '')));
+    if ($typeKey === '') {
+      $label = trim((string)($it['type'] ?? ''));
+      $typeKey = strtolower($labelToKey[$label] ?? 'other');
+    }
+
+    // Reservation ONLY if typeKey explicitly says so
+    $isReservation = ($typeKey === 'gym_reservation');
 
     if ($isReservation) {
-      // ---- RESERVATIONS path (do not probe SR by id) ----
       if ($id <= 0 && $ref !== '') {
         $stmt = $db->prepare("SELECT id FROM reservations WHERE reference_number = ? LIMIT 1");
         $stmt->execute([$ref]);
@@ -169,26 +192,42 @@ try {
       }
       if ($id <= 0) throw new Exception('Unable to resolve reservation id');
 
-      $stmtItem->execute([$paymentId, $type, $id, $amt]);
-      $stmtPayRS->execute([$id]); // -> paid
+      $stmtItem->execute([$paymentId, 'gym_reservation', $id, $amt]);
+      $stmtPayRS->execute([$id]);
 
     } else {
-      // ---- SERVICE REQUESTS path (do not probe reservations by id) ----
+      // Service request path: resolve id, trust DB service_type
+      $dbType = null;
+
       if ($id > 0) {
-        $stmt = $db->prepare("SELECT 1 FROM service_requests WHERE id = ? LIMIT 1");
-        $stmt->execute([$id]);
-        if (!$stmt->fetchColumn()) $id = 0;
+        $chk = $db->prepare("SELECT service_type FROM service_requests WHERE id = ? LIMIT 1");
+        $chk->execute([$id]);
+        $row = $chk->fetch(PDO::FETCH_ASSOC);
+        if ($row) $dbType = strtolower(trim((string)$row['service_type']));
+        else $id = 0;
       }
+
       if ($id <= 0 && $ref !== '') {
-        $stmt = $db->prepare("SELECT id FROM service_requests WHERE reference_number = ? LIMIT 1");
+        $stmt = $db->prepare("SELECT id, service_type FROM service_requests WHERE reference_number = ? LIMIT 1");
         $stmt->execute([$ref]);
-        $sid = $stmt->fetchColumn();
-        if ($sid) $id = (int)$sid;
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($row) {
+          $id = (int)$row['id'];
+          $dbType = strtolower(trim((string)$row['service_type']));
+        }
       }
+
       if ($id <= 0) throw new Exception('Unable to resolve service request id');
 
-      $stmtItem->execute([$paymentId, $type, $id, $amt]);
-      $stmtPaySR->execute([$id]); // -> paid
+      if ($dbType !== null && in_array($dbType, $VALID_SR_TYPES, true)) {
+        $typeKey = $dbType;
+      }
+      if (!in_array($typeKey, $VALID_SR_TYPES, true)) {
+        $typeKey = 'other';
+      }
+
+      $stmtItem->execute([$paymentId, $typeKey, $id, $amt]);
+      $stmtPaySR->execute([$id]);
     }
   }
 

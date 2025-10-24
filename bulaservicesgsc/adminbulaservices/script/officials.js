@@ -29,6 +29,55 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // Birthdate -> auto age
+  const birthdateEl = document.getElementById('birthdate');
+  const ageEl = document.getElementById('age');
+  function computeAgeFromBirthdate(iso) {
+    if (!iso) return '';
+    try {
+      const [y, m, d] = iso.split('-').map(n=>parseInt(n,10));
+      if (!y || !m || !d) return '';
+      const now = new Date();
+      let age = now.getFullYear() - y;
+      const hadBday = (now.getMonth()+1 > m) || ((now.getMonth()+1 === m) && (now.getDate() >= d));
+      if (!hadBday) age -= 1;
+      return age < 0 ? '' : String(age);
+    } catch { return ''; }
+  }
+  if (birthdateEl && ageEl) {
+    birthdateEl.addEventListener('change', () => {
+      ageEl.value = computeAgeFromBirthdate(birthdateEl.value);
+    });
+  }
+
+  // Religion "Other" toggle
+  const religionSel = document.getElementById('religion');
+  const religionOtherWrap = document.getElementById('religionOtherWrap');
+  const religionOther = document.getElementById('religion_other');
+  if (religionSel && religionOtherWrap) {
+    religionSel.addEventListener('change', () => {
+      const isOther = religionSel.value === 'Other';
+      religionOtherWrap.style.display = isOther ? '' : 'none';
+      if (!isOther && religionOther) religionOther.value = '';
+    });
+  }
+
+  // Phone input: digits only, max 11
+  const phoneEl = document.getElementById('contact_number');
+  if (phoneEl) {
+    phoneEl.addEventListener('input', () => {
+      const digits = phoneEl.value.replace(/\D+/g, '').slice(0, 11);
+      phoneEl.value = digits;
+    });
+    phoneEl.addEventListener('blur', () => {
+      const v = phoneEl.value;
+      if (v && (!/^0\d{10}$/.test(v))) {
+        alert('Contact number must be exactly 11 digits and start with 0 (e.g., 09XXXXXXXXX).');
+        phoneEl.focus();
+      }
+    });
+  }
+
   /* API helper */
   const api = async (action, data=null, method='POST') => {
     const opts = { method };
@@ -43,7 +92,7 @@ document.addEventListener('DOMContentLoaded', () => {
     return res.json();
   };
 
-  /* Load list */
+  /* Load list (Name · Last login · Status) */
   async function loadList() {
     const { data } = await api('list', null, 'GET');
     tableBody.innerHTML = '';
@@ -52,8 +101,6 @@ document.addEventListener('DOMContentLoaded', () => {
       tr.dataset.id = o.admin_id;
       tr.innerHTML = `
         <td>${(o.first_name||'') + ' ' + (o.last_name||'')}</td>
-        <td>${o.role || ''}</td>
-        <td>${o.position || ''}</td>
         <td>${o.last_login || '—'}</td>
         <td><span class="badge ${o.is_active ? 'active':'suspended'}">${o.is_active ? 'Active' : 'Suspended'}</span></td>
       `;
@@ -67,6 +114,7 @@ document.addEventListener('DOMContentLoaded', () => {
     createModal.classList.remove('open');
     if (formCreate) formCreate.reset();
     if (createPhotoPreview) createPhotoPreview.removeAttribute('src');
+    if (religionOtherWrap) religionOtherWrap.style.display = 'none';
   };
   btnAdd.onclick = openCreate;
   closeCreate.onclick = closeCreateModal;
@@ -76,6 +124,17 @@ document.addEventListener('DOMContentLoaded', () => {
   /* Create submit */
   formCreate.onsubmit = async (e) => {
     e.preventDefault();
+    // ensure age is updated in case user picked date and never blurred
+    if (birthdateEl && ageEl && birthdateEl.value && !ageEl.value) {
+      ageEl.value = computeAgeFromBirthdate(birthdateEl.value);
+    }
+    // client phone validation
+    if (phoneEl && phoneEl.value && !/^0\d{10}$/.test(phoneEl.value)) {
+      alert('Contact number must be exactly 11 digits and start with 0 (e.g., 09XXXXXXXXX).');
+      phoneEl.focus();
+      return;
+    }
+
     const fd = new FormData(formCreate); // includes photo if chosen
     try {
       const resp = await api('create', fd);
@@ -85,23 +144,22 @@ document.addEventListener('DOMContentLoaded', () => {
       if (createdBody) {
         createdBody.innerHTML = `
           <div style="font-size:14px;color:#0f172a;line-height:1.6">
-            <p><strong>Name:</strong> ${fd.get('first_name') || ''} ${fd.get('last_name') || ''}</p>
+            <p><strong>Name:</strong> ${(fd.get('first_name')||'')} ${(fd.get('last_name')||'')}</p>
             <p><strong>Username:</strong> ${d.username || fd.get('username') || ''}</p>
-            <p><strong>Email:</strong> ${d.email || fd.get('email') || ''}</p>
+            ${ (d.email || fd.get('email')) ? `<p><strong>Email:</strong> ${d.email || fd.get('email') || ''}</p>` : '' }
             <p style="margin-top:8px"><strong>Default Password:</strong>
               <span id="pwText" style="font-family:ui-monospace, SFMono-Regular, Menlo, monospace; background:#f8fafc; border:1px solid #e5e7eb; padding:4px 8px; border-radius:8px;">
                 ${d.default_password || 'Bula@2025'}
               </span>
               <button id="copyPw" class="btn" style="margin-left:8px;padding:6px 10px;border:1px solid #e5e7eb;border-radius:8px;cursor:pointer">Copy</button>
             </p>
-            <p style="color:#64748b;margin-top:8px">The account details have been emailed to the user.</p>
+            ${ (d.email || fd.get('email')) ? `<p class="muted" style="margin-top:8px">The account details have been emailed to the user.</p>` : `<p class="muted" style="margin-top:8px">No email was provided; please share credentials manually.</p>` }
           </div>
           <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px">
             <button class="btn" id="createdCloseBtn">Close</button>
           </div>
         `;
         openCreated();
-
         const copyBtn = document.getElementById('copyPw');
         const pwText  = document.getElementById('pwText');
         const createdCloseBtn = document.getElementById('createdCloseBtn');
@@ -123,7 +181,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
-  /* Row click -> details modal */
+  /* Row click -> details modal (no Position chip now) */
   const openDetails = () => { detailsModal.classList.add('open'); };
   const closeDetailsModal = () => { detailsModal.classList.remove('open'); };
   closeDetails.onclick = closeDetailsModal;
@@ -137,6 +195,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const a = data.admin, p = data.profile;
 
     const photoUrl = p.photo_url ? p.photo_url : '';
+    const isActive = (a.status === 'active');
     detailsBody.innerHTML = `
       <div class="grid g-2" style="align-items:center; margin-bottom:10px">
         <div class="row">
@@ -159,8 +218,7 @@ document.addEventListener('DOMContentLoaded', () => {
           <div style="color:#64748b;margin-top:2px">@${a.username}</div>
           <div class="row" style="margin-top:6px; flex-wrap:wrap">
             <span class="badge">${a.role}</span>
-            <span class="badge">${p.position || '—'}</span>
-            <span class="badge ${a.status==='active'?'active':'suspended'}">${a.status}</span>
+            <span id="statusBadge" class="badge ${isActive?'active':'suspended'}">${a.status}</span>
           </div>
           <div style="color:#64748b;margin-top:8px">
             <span><strong>Last login:</strong> ${a.last_login || '—'}</span>
@@ -175,6 +233,7 @@ document.addEventListener('DOMContentLoaded', () => {
       <div class="section">
         <h3>Personal</h3>
         <div class="grid g-2">
+          <div><div class="lbl">Birthdate</div><input class="inp" value="${p.birthdate || ''}" disabled></div>
           <div><div class="lbl">Age</div><input class="inp" value="${p.age || ''}" disabled></div>
           <div><div class="lbl">Sex</div><input class="inp" value="${p.sex || ''}" disabled></div>
           <div><div class="lbl">Religion</div><input class="inp" value="${p.religion || ''}" disabled></div>
@@ -191,11 +250,9 @@ document.addEventListener('DOMContentLoaded', () => {
       <div class="section">
         <h3>Account controls</h3>
         <div class="row" style="flex-wrap:wrap">
-          <button class="btn ${a.status==='active' ? 'btn-danger' : 'btn-solid'}" id="toggleBtn">
-            ${a.status==='active' ? 'Deactivate' : 'Activate'}
+          <button class="btn ${isActive ? 'btn-danger' : 'btn-solid'}" id="toggleBtn">
+            ${isActive ? 'Deactivate' : 'Activate'}
           </button>
-          <button class="btn" id="changeEmailBtn">Change email</button>
-          <button class="btn" id="resetBtn">Reset password</button>
         </div>
       </div>
     `;
@@ -228,31 +285,43 @@ document.addEventListener('DOMContentLoaded', () => {
       alert('Photo removed.');
     };
 
-    /* Toggle status */
-    document.getElementById('toggleBtn').onclick = async () => {
-      const fd = new FormData(); fd.append('id', a.id);
-      await api('toggle', fd);
-      alert('Account status updated.');
-      closeDetailsModal();
-      loadList();
-    };
+    /* Activate/Deactivate */
+    const toggleBtn = document.getElementById('toggleBtn');
+    const statusBadge = document.getElementById('statusBadge');
+    toggleBtn.onclick = async () => {
+      const goingActive = (toggleBtn.textContent.trim().toLowerCase() === 'activate');
+      if (!confirm(`Are you sure you want to ${goingActive ? 'activate' : 'deactivate'} this account?`)) return;
 
-    /* Reset password */
-    document.getElementById('resetBtn').onclick = async () => {
-      const fd = new FormData(); fd.append('id', a.id);
-      await api('reset', fd);
-      alert('Temporary password emailed (Bula@2025).');
-    };
+      const previousText = toggleBtn.textContent;
+      toggleBtn.disabled = true;
+      toggleBtn.textContent = 'Working…';
 
-    /* Change email */
-    document.getElementById('changeEmailBtn').onclick = async () => {
-      const newEmail = prompt('Enter new email:');
-      if (!newEmail) return;
-      const fd = new FormData(); fd.append('id', a.id); fd.append('email', newEmail);
-      await api('update_email', fd);
-      alert('Email updated.');
-      closeDetailsModal();
-      loadList();
+      try {
+        const fd = new FormData(); fd.append('id', a.id);
+        await api('toggle', fd);
+
+        // flip UI state
+        const nowActive = goingActive;
+        const text = nowActive ? 'Deactivate' : 'Activate';
+        toggleBtn.classList.toggle('btn-danger', nowActive);
+        toggleBtn.classList.toggle('btn-solid', !nowActive);
+        toggleBtn.textContent = text;
+
+        if (statusBadge) {
+          statusBadge.textContent = nowActive ? 'active' : 'suspended';
+          statusBadge.classList.toggle('active', nowActive);
+          statusBadge.classList.toggle('suspended', !nowActive);
+        }
+
+        // refresh table
+        await loadList();
+      } catch (err) {
+        alert('Failed to update account status.');
+        console.error(err);
+        toggleBtn.textContent = previousText;
+      } finally {
+        toggleBtn.disabled = false;
+      }
     };
   });
 

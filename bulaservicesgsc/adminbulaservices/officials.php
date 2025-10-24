@@ -4,7 +4,7 @@ if (empty($_SESSION['admin_id'])) {
   header('Location: index.php');
   exit;
 }
-if ($_SESSION['admin_role'] !== 'superadmin') {
+if (($_SESSION['admin_role'] ?? '') !== 'superadmin') {
     header('Location: admin.php?denied=1');
     exit;
 }
@@ -15,7 +15,7 @@ if ($_SESSION['admin_role'] !== 'superadmin') {
   <meta charset="UTF-8" />
   <title>Officials Management</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <!-- Icons (optional; used for the back arrow) -->
+  <!-- Icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
   <!-- Page stylesheet -->
   <link rel="stylesheet" href="./css/officials.css">
@@ -45,8 +45,6 @@ if ($_SESSION['admin_role'] !== 'superadmin') {
           <thead>
             <tr>
               <th>Name</th>
-              <th>Role</th>
-              <th>Position</th>
               <th>Last login</th>
               <th>Status</th>
             </tr>
@@ -65,7 +63,7 @@ if ($_SESSION['admin_role'] !== 'superadmin') {
         <button class="x" id="closeCreate" aria-label="Close">×</button>
       </div>
       <div class="panel-body">
-        <form id="formCreate" enctype="multipart/form-data">
+        <form id="formCreate" enctype="multipart/form-data" novalidate>
           <!-- Photo -->
           <div class="section">
             <h3>Photo</h3>
@@ -80,7 +78,7 @@ if ($_SESSION['admin_role'] !== 'superadmin') {
 
           <div class="hr"></div>
 
-          <!-- Basic info -->
+          <!-- Basic info (email optional here) -->
           <div class="section">
             <h3>Basic information</h3>
             <div class="grid g-2">
@@ -92,31 +90,59 @@ if ($_SESSION['admin_role'] !== 'superadmin') {
                 <div class="lbl">Last name</div>
                 <input class="inp" name="last_name" required>
               </div>
+
+              <div>
+                <div class="lbl">Birthdate</div>
+                <input class="inp" type="date" name="birthdate" id="birthdate">
+              </div>
               <div>
                 <div class="lbl">Age</div>
-                <input class="inp" type="number" name="age" min="18">
+                <input class="inp" type="number" name="age" id="age" inputmode="numeric" readonly placeholder="Auto">
               </div>
+
               <div>
                 <div class="lbl">Sex</div>
                 <select class="sel" name="sex">
                   <option value="">—</option>
                   <option>Male</option>
                   <option>Female</option>
-                  <option>Other</option>
                 </select>
               </div>
               <div>
                 <div class="lbl">Religion</div>
-                <input class="inp" name="religion">
+                <select class="sel" name="religion" id="religion">
+                  <option value="">—</option>
+                  <option>Roman Catholic</option>
+                  <option>Islam</option>
+                  <option>Iglesia ni Cristo</option>
+                  <option>Evangelical/Protestant</option>
+                  <option>Seventh-day Adventist</option>
+                  <option>Buddhism</option>
+                  <option>Hinduism</option>
+                  <option>Indigenous/Tribal</option>
+                  <option>None</option>
+                  <option>Other</option>
+                </select>
+              </div>
+
+              <div>
+                <div class="lbl">Email <span class="muted">(optional)</span></div>
+                <input class="inp" type="email" name="email" placeholder="name@example.com">
               </div>
               <div>
                 <div class="lbl">Contact number</div>
-                <input class="inp" name="contact_number">
+                <input class="inp" name="contact_number" id="contact_number"
+                       placeholder="09XXXXXXXXX" inputmode="numeric" maxlength="11">
+                <small class="muted">Must be exactly 11 digits and start with 0.</small>
               </div>
             </div>
             <div class="mt10">
               <div class="lbl">Address</div>
               <textarea class="txt" name="address" rows="2"></textarea>
+            </div>
+            <div id="religionOtherWrap" class="mt10" style="display:none">
+              <div class="lbl">If “Other”, specify</div>
+              <input class="inp" name="religion_other" id="religion_other" placeholder="Religion">
             </div>
           </div>
 
@@ -131,27 +157,11 @@ if ($_SESSION['admin_role'] !== 'superadmin') {
                 <input class="inp" name="username" required>
               </div>
               <div>
-                <div class="lbl">Email</div>
-                <input class="inp" type="email" name="email" required>
-              </div>
-              <div>
                 <div class="lbl">Role</div>
                 <select class="sel" name="role">
-                  <option value="kagawad">Kagawad</option>
-                  <option value="superadmin">Punong Barangay (Superadmin)</option>
+                  <option value="admin">admin</option>
+                  <option value="staff">staff</option>
                 </select>
-              </div>
-              <div>
-                <div class="lbl">Position</div>
-                <input class="inp" name="position" required>
-              </div>
-              <div>
-                <div class="lbl">Term start</div>
-                <input class="inp" type="date" name="term_start">
-              </div>
-              <div>
-                <div class="lbl">Term end</div>
-                <input class="inp" type="date" name="term_end">
               </div>
             </div>
           </div>
@@ -178,7 +188,7 @@ if ($_SESSION['admin_role'] !== 'superadmin') {
     </div>
   </div>
 
-  <!-- Create Success Modal (used by JS to show Username/Email/Default Password) -->
+  <!-- Create Success Modal -->
   <div class="modal" id="createdModal" aria-hidden="true">
     <div class="panel" role="dialog" aria-modal="true">
       <div class="panel-head">

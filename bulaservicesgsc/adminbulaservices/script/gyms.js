@@ -1,22 +1,44 @@
-// script/gyms.js (ADMIN)
+// script/gyms.js (ADMIN, month coloring + server-aligned "past date" click guard + Manila TZ + no autofill)
 document.addEventListener('DOMContentLoaded', () => {
   const timeSlotModal = new bootstrap.Modal(document.getElementById('timeSlotModal'));
   const reservationModal = new bootstrap.Modal(document.getElementById('reservationFormModal'));
   const confirmationModal = new bootstrap.Modal(document.getElementById('confirmationModal'));
 
-  const PREFILL_NAME = (window.PREFILL_NAME || '').trim();
-  const PREFILL_CONTACT = (window.PREFILL_CONTACT || '').trim();
-
+  // ----- Server-aligned clock (prevents local clock mismatch)
   let SERVER_NOW_BASE_ISO = window.SERVER_NOW_ISO || null;
   const CLIENT_ANCHOR_MS = Date.now();
   let SERVER_ANCHOR_MS = SERVER_NOW_BASE_ISO ? Date.parse(SERVER_NOW_BASE_ISO) : Date.now();
-
-  function alignServerNow(serverIso) { if (serverIso) { SERVER_NOW_BASE_ISO = serverIso; SERVER_ANCHOR_MS = Date.parse(serverIso); } }
+  function alignServerNow(serverIso) {
+    if (serverIso) { SERVER_NOW_BASE_ISO = serverIso; SERVER_ANCHOR_MS = Date.parse(serverIso); }
+  }
   function serverNowMs() { return (SERVER_ANCHOR_MS + (Date.now() - CLIENT_ANCHOR_MS)); }
-  function serverNowParts() { const d = new Date(serverNowMs()); return { y:d.getFullYear(), m:d.getMonth()+1, d:d.getDate(), hour:d.getHours() }; }
-  function isSameYMD(dateStr, parts) { const [Y,M,D] = dateStr.split('-').map(n=>parseInt(n,10)); return Y===parts.y && M===parts.m && D===parts.d; }
 
-  // Live-editable rates; updated from server on load
+  // Return YYYY-MM-DD for "now" in Asia/Manila based on server clock
+  function serverTodayYMD() {
+    const d = new Date(serverNowMs());
+    // en-CA prints YYYY-MM-DD; force Manila timezone so "today" is correct
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Manila',
+      year: 'numeric', month: '2-digit', day: '2-digit'
+    }).format(d);
+  }
+
+  function serverNowParts() {
+    const d = new Date(serverNowMs());
+    // Get date/time components for Manila to judge “past hours” on today
+    const str = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Manila',
+      year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', hour12:false
+    }).formatToParts(d).reduce((acc,p)=>{acc[p.type]=p.value; return acc;}, {});
+    return { y:parseInt(str.year,10), m:parseInt(str.month,10), d:parseInt(str.day,10), hour:parseInt(str.hour,10) };
+  }
+  function isSameYMD(dateStr, parts) {
+    const [Y,M,D] = dateStr.split('-').map(n=>parseInt(n,10));
+    return Y===parts.y && M===parts.m && D===parts.d;
+  }
+  function iso(d){ return d.toISOString().slice(0,10); } // YYYY-MM-DD
+
+  // Live-editable rates (fetched from backend each load)
   const RATES = { MORNING: 200, EVENING: 300 };
 
   // ---- API base ----
@@ -40,24 +62,84 @@ document.addEventListener('DOMContentLoaded', () => {
   let selectedSlots = [];
   let activeQuickSelect = null;
   let calendar;
+  let dayStatesSource = null; // event source for background day colors
 
   function initCalendar() {
     const el = document.getElementById('calendar');
     calendar = new FullCalendar.Calendar(el, {
+      timeZone: 'Asia/Manila',               // <-- make FC “today” match Manila
       initialView: 'dayGridMonth',
       headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek,timeGridDay' },
       height: 'auto',
       dateClick: onDateClick,
       nowIndicator: true,
-      validRange: { start: new Date() }
+      // Keep navigation to past months visible; CSS + JS will block interaction on past days.
+      // validRange: { start: new Date() },
+      datesSet: onDatesSet // refresh month colors when view changes
     });
     calendar.render();
   }
 
+  // Repaint month colors when the visible range changes
+  function onDatesSet(info) {
+    const viewStart = info.view.currentStart; // first day of the month in month view
+    const year = viewStart.getFullYear();
+    const month = viewStart.getMonth() + 1; // 1..12
+    refreshMonthColors(year, month).catch(err => console.error(err));
+  }
+
+  // Pull month summary and paint background events
+  async function refreshMonthColors(year, month) {
+    const res = await postGym({ action: 'get_month_summary', year, month });
+    if (res.server_now) alignServerNow(res.server_now);
+
+    const TOTAL_SLOTS = Number(res.total_per_day ?? 15); // 7:00–22:00 hourly
+    const todayYMD = serverTodayYMD();
+
+    const bgEvents = [];
+    for (const d of (res.days || [])) {
+      const ymd = d.date;
+      const count = Number(d.booked || 0);
+
+      // Skip past dates (CSS keeps them gray + unclickable)
+      if (ymd < todayYMD) continue;
+
+      let className = '';
+      if (count <= 0) className = 'bg-day-available';          // BLUE
+      else if (count >= TOTAL_SLOTS) className = 'bg-day-full'; // RED
+      else className = 'bg-day-limited';                        // AMBER
+
+      bgEvents.push({
+        start: ymd,
+        allDay: true,
+        display: 'background',
+        classNames: [className]
+      });
+    }
+
+    // Replace old background event source
+    if (dayStatesSource) {
+      try { await dayStatesSource.remove(); } catch(_) {}
+      dayStatesSource = null;
+    }
+    dayStatesSource = calendar.addEventSource(bgEvents);
+  }
+
+  // --- STRICT: block clicking past dates (server clock, Manila TZ)
   function onDateClick(info) {
+    const todayYMD = serverTodayYMD(); // e.g., "2025-10-23"
+    // info.dateStr is "YYYY-MM-DD" (FC uses calendar timeZone), so string-compare is safe
+    if (info.dateStr < todayYMD) {
+      // Ignore clicks on past dates
+      return;
+    }
+
     selectedDate = info.dateStr;
     document.getElementById('selectedDateHeader').textContent =
-      new Date(selectedDate).toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+      new Date(selectedDate + 'T00:00:00+08:00').toLocaleDateString('en-US',{
+        timeZone:'Asia/Manila',
+        weekday:'long',year:'numeric',month:'long',day:'numeric'
+      });
     loadTimeSlots(selectedDate);
     timeSlotModal.show();
     activeQuickSelect = null;
@@ -85,7 +167,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // --- NEW: keep selected slot rates in sync with latest RATES ---
+  // Keep selected slot rates in sync with latest RATES
   function refreshSelectedRates() {
     selectedSlots = selectedSlots.map(s => ({
       ...s,
@@ -103,12 +185,12 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const res = await postGym({ action: 'get_slots', date });
 
-      // adopt live rates from server (NEW)
+      // adopt live rates from server
       if (res.rates && typeof res.rates.morning === 'number' && typeof res.rates.evening === 'number') {
         RATES.MORNING = res.rates.morning;
         RATES.EVENING = res.rates.evening;
-        renderCurrentRates();           // update banner immediately
-        refreshSelectedRates();         // in case something was preselected (safety)
+        renderCurrentRates();
+        refreshSelectedRates();
       }
 
       const bookedHours = Array.isArray(res.booked) ? res.booked.map(b=>b.hour) : [];
@@ -124,7 +206,6 @@ document.addEventListener('DOMContentLoaded', () => {
       }));
 
       slots.forEach(slot => renderSlot(container, slot));
-      // banner already rendered above; keep for first paint if no rates yet:
       if (!res.rates) renderCurrentRates();
     } catch (e) {
       container.innerHTML = `<div class="alert alert-danger"><i class="fa fa-triangle-exclamation me-2"></i>Failed to load slots.</div>`;
@@ -135,7 +216,6 @@ document.addEventListener('DOMContentLoaded', () => {
   function renderCurrentRates() {
     const el = document.getElementById('currentRates');
     if (!el) return;
-    // match the format shown in gyms.php banner
     el.textContent = `7AM–5PM: ₱${Number(RATES.MORNING)} /hour • 5PM–10PM: ₱${Number(RATES.EVENING)} /hour`;
   }
 
@@ -178,9 +258,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (idx === -1) { selectedSlots.push(slot); card.classList.add('selected'); }
     else { selectedSlots.splice(idx, 1); card.classList.remove('selected'); }
 
-    // ensure selected slots use the latest live rates (NEW)
     refreshSelectedRates();
-
     updateSummary();
     document.getElementById('proceedToReservation').disabled = selectedSlots.length === 0;
     activeQuickSelect = null;
@@ -270,7 +348,6 @@ document.addEventListener('DOMContentLoaded', () => {
           hour,
           time: card.querySelector('.time-slot-range').textContent,
           booked: false,
-          // use CURRENT live rates (NEW)
           rate: hour < 17 ? RATES.MORNING : RATES.EVENING,
           rateType: hour < 17 ? 'morning' : 'evening'
         });
@@ -281,9 +358,9 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   document.getElementById('proceedToReservation').addEventListener('click', ()=>{
-    const dateObj = new Date(selectedDate);
+    const dateObj = new Date(selectedDate + 'T00:00:00+08:00');
     document.getElementById('reservationDateDisplay').textContent =
-      dateObj.toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+      dateObj.toLocaleDateString('en-US',{ timeZone:'Asia/Manila', weekday:'long',year:'numeric',month:'long',day:'numeric' });
     document.getElementById('reservationTimesDisplay').innerHTML =
       selectedSlots.sort((a,b)=>a.hour-b.hour).map(s=>`<li>${s.time} <small class="text-muted">(₱${s.rate}/hr)</small></li>`).join('');
     document.getElementById('reservationTotalDisplay').textContent = `₱${selectedSlots.reduce((t,s)=>t+s.rate,0)}`;
@@ -295,18 +372,18 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('referenceNumberDisplay').textContent = ref;
     document.getElementById('referenceNumber').value = ref;
 
-    const nameEl = document.getElementById('residentName');
-    const contactEl = document.getElementById('contactNumber');
-    if (nameEl && !nameEl.value) nameEl.value = PREFILL_NAME;
-    if (contactEl && !contactEl.value) contactEl.value = PREFILL_CONTACT;
-
-    timeSlotModal.hide();
+    // Admin: leave name/contact blank + editable
     reservationModal.show();
+    timeSlotModal.hide();
   });
 
   document.getElementById('submitReservation').addEventListener('click', async ()=>{
     const form = document.getElementById('reservationForm');
     if (!form.checkValidity()) { form.reportValidity(); return; }
+
+    // honeypot (anti-bot)
+    const honey = (document.getElementById('website').value || '').trim();
+    if (honey) { alert('Submission blocked.'); return; }
 
     const residentName = (document.getElementById('residentName').value || '').trim();
     const contactNumber = (document.getElementById('contactNumber').value || '').trim();
@@ -324,15 +401,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
     try {
       const res = await postGym(payload);
+
       document.getElementById('confirmedReference').textContent = res.reference || payload.reference;
       document.getElementById('confirmedAmount').textContent = String(res.total ?? selectedSlots.reduce((t,s)=>t+s.rate,0));
       document.getElementById('confirmedWho').textContent =
         residentName ? `${residentName}${contactNumber ? ' • ' + contactNumber : ''}` : '';
 
+      // update simple print area
+      document.getElementById('p_ref').textContent = res.reference || payload.reference;
+      document.getElementById('p_name').textContent = residentName || '';
+      document.getElementById('p_total').textContent = String(res.total ?? selectedSlots.reduce((t,s)=>t+s.rate,0));
+
       reservationModal.hide();
       confirmationModal.show();
       form.reset();
       await loadTimeSlots(selectedDate);
+
+      // Also refresh month colors after booking
+      const currentStart = calendar.view.currentStart;
+      await refreshMonthColors(currentStart.getFullYear(), currentStart.getMonth()+1);
     } catch (e) {
       console.error(e);
       alert(e.message || 'Failed to submit reservation. Please try again.');

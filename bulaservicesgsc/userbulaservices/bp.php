@@ -19,7 +19,7 @@ if (empty($userInfo)) {
     exit;
 }
 
-/* === Live price for Business Permit (type_code = 'bp') from certificate_pricing === */
+/* === Live price for Business Clearance (type_code = 'bp') from certificate_pricing === */
 try {
     $db  = getDBConnection();
     $stmt = $db->prepare("SELECT price FROM certificate_pricing WHERE type_code = ? LIMIT 1");
@@ -37,7 +37,7 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Business Permit | Barangay Bula</title>
+    <title>Business Clearance | Barangay Bula</title>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="./style/bp.css">
@@ -70,8 +70,8 @@ try {
                 </div>
                 
                 <div class="form-header">
-                    <h2><i class="fas fa-briefcase"></i> Business Permit</h2>
-                    <p>Fill out the form to request a Business Permit</p>
+                    <h2><i class="fas fa-briefcase"></i> Business Clearance</h2>
+                    <p>Fill out the form to request a Business Clearance</p>
                 </div>
                    
                 <form id="businessPermitForm" enctype="multipart/form-data">
@@ -257,7 +257,7 @@ try {
             <span class="close-modal" tabindex="0" aria-label="Close modal">&times;</span>
             <i class="fas fa-check-circle" aria-hidden="true"></i>
             <h3 id="modalTitle">Application Submitted Successfully!</h3>
-            <p>Your Business Permit application has been received.</p>
+            <p>Your Business Clearance application has been received.</p>
             <div class="reference-number" id="referenceNumber"></div>
             <div class="amount-due" id="amountDue"></div>
             <p>We will notify you once your documents are ready for pickup.</p>

@@ -230,10 +230,21 @@ function showError(message, details='') {
           <div class="form-row">
             <div class="form-group">
               <label for="contact">Contact Number</label>
-              <input type="text" id="contact" name="contact_number"
-                     placeholder="09XXXXXXXXX" required />
+              <input
+                type="text"
+                id="contact"
+                name="contact_number"
+                placeholder="09XXXXXXXXX"
+                required
+                inputmode="numeric"
+                autocomplete="tel"
+                maxlength="11"
+                pattern="^09\d{9}$"
+                title="Enter a valid PH mobile number starting with 09 (11 digits)."
+              />
             </div>
           </div>
+
 
           <div class="form-row">
             <div class="form-group resident-only-field">

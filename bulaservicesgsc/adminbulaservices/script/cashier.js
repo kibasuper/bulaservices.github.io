@@ -30,6 +30,22 @@ let filteredItems = [];
 let hiddenIds = new Set();
 let cart = [];
 
+// ===================== Canonical map: human label -> request_type key =====================
+const LABEL_TO_KEY = {
+  'Barangay Clearance': 'barangay_clearance',
+  'Certificate of Indigency': 'indigency',
+  'Certificate of Residency': 'residency',
+  'Business Permit': 'business_permit',
+  'Community Tax Certificate': 'cedula',
+  'Community Tax Certificate (Cedula)': 'cedula',
+  'IVS': 'ivs',
+  'Low Income Certificate': 'low_income',
+  'Proof of Income Certificate': 'proof_income',
+  'Gym Reservation': 'gym_reservation',
+  'Gym Service': 'gym',
+  'Other Service': 'other'
+};
+
 // ===================== Utils =====================
 const peso = (n) => `₱${Number(n || 0).toFixed(2)}`;
 const debounce = (fn, ms = 250) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
@@ -40,7 +56,7 @@ function isPayableStatus(s) {
   return !['paid', 'completed', 'cancelled', 'canceled', 'void', 'refunded', 'settled'].includes(status);
 }
 
-// NEW: display “Processing” instead of “Approved”
+// Display “Processing” instead of “Approved”
 function displayStatus(s) {
   const raw = String(s || '').trim().toLowerCase();
   if (raw === 'approved') return 'Processing';
@@ -108,12 +124,22 @@ async function fetchRequests() {
     try { json = JSON.parse(text); }
     catch { throw new Error(`Non-JSON response: ${text.slice(0, 300)}`); }
 
-    console.log('[cashier] api len:', Array.isArray(json.requests) ? json.requests.length : 'n/a');
     if (json.debug) console.log('[cashier] debug:', json.debug);
-
     if (!json.success) throw new Error(json.message || 'Server error');
 
-    allItems = Array.isArray(json.requests) ? json.requests : [];
+    // Normalize items defensively (ensure request_type present)
+    const list = Array.isArray(json.requests) ? json.requests : [];
+    allItems = list.map(r => {
+      const label = (r.type || '').trim();
+      const canonicalFromLabel = LABEL_TO_KEY[label] || '';
+      const canonical = (r.request_type || canonicalFromLabel || 'other').toLowerCase();
+      return {
+        ...r,
+        request_type: canonical
+      };
+    });
+
+    console.log('[cashier] api len:', allItems.length);
     refreshList();
   } catch (err) {
     console.error('fetchRequests error', err);
@@ -133,10 +159,10 @@ function refreshList() {
 
   if (q) {
     base = base.filter(r =>
-      (r.code && r.code.toLowerCase().includes(q)) ||
-      (r.type && r.type.toLowerCase().includes(q)) ||
-      (r.details && r.details.toLowerCase().includes(q)) ||
-      (r.customer_name && r.customer_name.toLowerCase().includes(q))
+      (r.code && String(r.code).toLowerCase().includes(q)) ||
+      (r.type && String(r.type).toLowerCase().includes(q)) ||
+      (r.details && String(r.details).toLowerCase().includes(q)) ||
+      (r.customer_name && String(r.customer_name).toLowerCase().includes(q))
     );
   }
 
@@ -199,18 +225,31 @@ function addToCart(src) {
   if (cart.some(i => String(i.id) === String(src.id))) {
     return toast('Already added', 'info');
   }
+
+  // Resolve canonical request_type for the server:
+  // 1) Use src.request_type if API provided it (preferred).
+  // 2) Else derive from the human label (src.type) via LABEL_TO_KEY.
+  // 3) Fallback to 'other'.
+  const canonicalKey = (src.request_type || LABEL_TO_KEY[src.type] || 'other').toLowerCase();
+
   cart.push({
     id: src.id,
     code: src.code,
+
+    // HUMAN label for display:
     type: src.type,
+
+    // CANONICAL key for the server (critical):
+    request_type: canonicalKey,
+
     details: src.details,
     amount: Number(src.amount || 0),
 
-    // carry customer fields if present (safe defaults)
     customer_name: src.customer_name || '',
     customer_contact: src.customer_contact || '',
     email: (src.email || '').trim()
   });
+
   hiddenIds.add(String(src.id));
   updateCartUI();
   refreshList();
@@ -302,6 +341,18 @@ async function processPayment() {
   const safeContact = (cart[0]?.customer_contact ?? '').trim() || '';
 
   try {
+    // Ensure each item being sent has request_type (safety net)
+    const payloadItems = cart.map(i => ({
+      id: i.id,
+      code: i.code,
+      type: i.type,
+      request_type: (i.request_type || LABEL_TO_KEY[i.type] || 'other').toLowerCase(),
+      amount: i.amount,
+      customer_name: i.customer_name || '',
+      customer_contact: i.customer_contact || '',
+      email: i.email || ''
+    }));
+
     const response = await fetch(ENDPOINT_PAY, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -310,7 +361,7 @@ async function processPayment() {
         receiptNumber,
         cashGiven: cash,
         totalAmount: total,
-        items: cart,
+        items: payloadItems,
 
         email: safeEmail,
         customerName: safeName,

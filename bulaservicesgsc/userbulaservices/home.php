@@ -131,7 +131,7 @@ $picUrl = $currentUser['profilePic'] ?: './pics/profile-placeholder.jpg';
                     <i class="fas fa-briefcase"></i>
                 </div>
                 <div class="service-content">
-                    <h3>Business Permit</h3>
+                    <h3>Business Clearance</h3>
                     <p>Required document for operating businesses within the barangay</p>
                     <a href="bp.php" class="service-link">Request Now</a>
                 </div>

@@ -140,3 +140,34 @@
 [21-Oct-2025 01:02:43 Etc/UTC] serve_upload.php DEBUG: Tried path 
 [21-Oct-2025 01:02:52 Etc/UTC] serve_upload.php DEBUG: Tried path 
 [21-Oct-2025 06:25:13 Etc/UTC] [SRV] Unknown service_type: raw='' -> ''. Forcing 'other'.
+[21-Oct-2025 07:26:09 Etc/UTC] Payment process error: Missing required payment data
+[21-Oct-2025 07:26:14 Etc/UTC] Payment process error: Missing required payment data
+[21-Oct-2025 15:51:11 Asia/Manila] Billing fetch error: SQLSTATE[HY093]: Invalid parameter number
+[21-Oct-2025 15:51:32 Asia/Manila] Billing fetch error: SQLSTATE[HY093]: Invalid parameter number
+[21-Oct-2025 15:51:34 Asia/Manila] Billing fetch error: SQLSTATE[HY093]: Invalid parameter number
+[21-Oct-2025 15:51:55 Asia/Manila] Billing fetch error: SQLSTATE[HY093]: Invalid parameter number
+[21-Oct-2025 15:52:04 Asia/Manila] Billing fetch error: SQLSTATE[HY093]: Invalid parameter number
+[21-Oct-2025 15:52:15 Asia/Manila] Billing fetch error: SQLSTATE[HY093]: Invalid parameter number
+[21-Oct-2025 15:52:35 Asia/Manila] Billing fetch error: SQLSTATE[HY093]: Invalid parameter number
+[21-Oct-2025 15:52:55 Asia/Manila] Billing fetch error: SQLSTATE[HY093]: Invalid parameter number
+[21-Oct-2025 15:53:05 Asia/Manila] Billing fetch error: SQLSTATE[HY093]: Invalid parameter number
+[21-Oct-2025 15:53:15 Asia/Manila] Billing fetch error: SQLSTATE[HY093]: Invalid parameter number
+[21-Oct-2025 15:54:05 Asia/Manila] Billing fetch error: SQLSTATE[HY093]: Invalid parameter number
+[21-Oct-2025 15:54:11 Asia/Manila] Billing fetch error: SQLSTATE[HY093]: Invalid parameter number
+[21-Oct-2025 15:55:01 Asia/Manila] Billing fetch error: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'r.email' in 'field list'
+[21-Oct-2025 15:55:01 Asia/Manila] Billing fetch error: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'r.email' in 'field list'
+[21-Oct-2025 15:55:05 Asia/Manila] Billing fetch error: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'r.email' in 'field list'
+[21-Oct-2025 15:55:22 Asia/Manila] Billing fetch error: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'r.email' in 'field list'
+[21-Oct-2025 15:55:42 Asia/Manila] Billing fetch error: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'r.email' in 'field list'
+[21-Oct-2025 15:56:02 Asia/Manila] Billing fetch error: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'r.email' in 'field list'
+[21-Oct-2025 15:56:05 Asia/Manila] Billing fetch error: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'r.email' in 'field list'
+[21-Oct-2025 15:56:22 Asia/Manila] Billing fetch error: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'r.email' in 'field list'
+[21-Oct-2025 15:56:22 Asia/Manila] Billing fetch error: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'r.email' in 'field list'
+[21-Oct-2025 15:56:42 Asia/Manila] Billing fetch error: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'r.email' in 'field list'
+[21-Oct-2025 08:21:03 Etc/UTC] [SRV] Unknown service_type: raw='' -> ''. Forcing 'other'.
+[21-Oct-2025 09:25:55 Etc/UTC] [SRV] Unknown service_type: raw='' -> ''. Forcing 'other'.
+[21-Oct-2025 09:30:21 Etc/UTC] [SRV] Unknown service_type: raw='' -> ''. Forcing 'other'.
+[23-Oct-2025 06:47:56 Asia/Manila] gymsback (admin) error: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'user_id' in 'field list'
+[23-Oct-2025 07:05:28 Asia/Manila] gymsback (admin) error: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'user_id' in 'field list'
+[23-Oct-2025 07:07:26 Asia/Manila] gymsback (admin) error: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'user_id' in 'field list'
+[24-Oct-2025 02:19:08 Etc/UTC] [SRV] Unknown service_type: raw='' -> ''. Forcing 'other'.

@@ -4,18 +4,15 @@ declare(strict_types=1);
 require_once __DIR__ . '/server/config.php';
 require_once __DIR__ . '/server/certificate_functions.php';
 
-// Require a logged-in user
 ensureUserAccess();
 
 try {
     $certificate = new CertificateRequest();
-    $userInfo = $certificate->getUserInfo(); // typically: fullName, contactNumber, address, etc.
+    $userInfo = $certificate->getUserInfo();
 
-    // Build robust fallbacks for name & contact
     $fullNameRaw =
         ($userInfo['fullName'] ?? '') !== '' ? $userInfo['fullName'] :
         (($userInfo['full_name'] ?? '') !== '' ? $userInfo['full_name'] : '');
-
     if ($fullNameRaw === '') {
         $fn = trim((string)($userInfo['first_name'] ?? $_SESSION['first_name'] ?? ''));
         $ln = trim((string)($userInfo['last_name']  ?? $_SESSION['last_name']  ?? ''));
@@ -27,7 +24,6 @@ try {
     $contactRaw =
         ($userInfo['contactNumber']  ?? '') !== '' ? $userInfo['contactNumber']  :
         (($userInfo['contact_number'] ?? '') !== '' ? $userInfo['contact_number'] : '');
-
     if ($contactRaw === '') {
         $contactRaw = trim((string)($_SESSION['contact_number'] ?? $_SESSION['contact'] ?? ''));
     }
@@ -39,14 +35,11 @@ try {
         exit();
     }
 
-    // Escaped for HTML inputs
     $fullName  = htmlspecialchars($fullNameRaw, ENT_QUOTES, 'UTF-8');
     $contactNo = htmlspecialchars($contactRaw,  ENT_QUOTES, 'UTF-8');
 
-    // Server "now" (source of truth) in Asia/Manila, ISO-8601 with offset
     $serverNowISO = (new DateTimeImmutable('now', new DateTimeZone('Asia/Manila')))->format('c');
 
-    // --- NEW: read live gym rates for initial banner ---
     $db = getDBConnection();
     $row = $db->query("SELECT morning_rate, evening_rate FROM gym_pricing WHERE id = 1")->fetch();
     $morningRate = isset($row['morning_rate']) ? (float)$row['morning_rate'] : 200.0;
@@ -72,13 +65,10 @@ try {
 
   <!-- App CSS -->
   <link href="./style/gym.css" rel="stylesheet">
+
   <style>
-    /* minor visual for past slots */
-    .time-slot-card.past {
-      opacity: .45;
-      cursor: not-allowed !important;
-      filter: grayscale(20%);
-    }
+    /* === Only minimal inline styles (kept from your file) === */
+    .time-slot-card.past{opacity:.45;cursor:not-allowed!important;filter:grayscale(20%)}
     .rate-info-alert{background:linear-gradient(135deg, rgba(76,201,240,.1) 0%, rgba(255,107,53,.1) 100%);border-left:4px solid #4361ee}
     .morning-badge{background-color:#4cc9f0!important}
     .evening-badge{background-color:#ff6b35!important}
@@ -106,12 +96,11 @@ try {
 
     <div id="calendar"></div>
 
-    <div class="calendar-legend">
-      <div class="legend-item"><div class="legend-color" style="background-color: rgba(76,201,240,.1)"></div><span>Available</span></div>
-      <div class="legend-item"><div class="legend-color" style="background-color: rgba(255,190,11,.1)"></div><span>Limited Slots</span></div>
-      <div class="legend-item"><div class="legend-color" style="background-color: rgba(247,37,133,.1)"></div><span>Fully Booked</span></div>
-      <div class="legend-item"><div class="legend-color" style="background-color: rgba(255,193,7,.2)"></div><span>Maintenance</span></div>
-      <div class="legend-item"><div class="legend-color" style="background-color: rgba(0,0,0,.05)"></div><span>Past (today)</span></div>
+    <div class="calendar-legend mt-3">
+      <div class="legend-item"><div class="legend-color available"></div><span>Available</span></div>
+      <div class="legend-item"><div class="legend-color limited"></div><span>Limited Slots</span></div>
+      <div class="legend-item"><div class="legend-color full"></div><span>Fully Booked</span></div>
+      <div class="legend-item"><div class="legend-color past"></div><span>Past </span></div>
     </div>
   </div>
 
@@ -126,7 +115,6 @@ try {
         <div class="modal-body">
           <h6 id="selectedDateHeader" class="mb-3"></h6>
 
-          <!-- NEW: dynamic, server-rendered banner + JS-updatable span -->
           <div class="alert rate-info-alert">
             <strong>Rate Information:</strong>
             <span id="currentRates" class="ms-2">
@@ -134,11 +122,15 @@ try {
             </span>
           </div>
 
-          <div class="quick-select-container mb-3">
+          <div class="quick-select-container mb-3" id="quickSelectWrap">
             <button type="button" class="btn btn-outline-primary quick-select-btn" id="wholeDayBtn">Full Day (7AM–10PM)</button>
             <button type="button" class="btn btn-outline-primary quick-select-btn" id="morningRateBtn">Morning (7AM–5PM)</button>
             <button type="button" class="btn btn-outline-primary quick-select-btn" id="eveningRateBtn">Evening (5PM–10PM)</button>
             <button type="button" class="btn btn-outline-secondary quick-select-btn" id="clearSelectionBtn">Clear Selection</button>
+          </div>
+
+          <div id="noSlotsMsg" class="alert alert-warning d-none">
+            <i class="fa-solid fa-circle-info me-1"></i> No available slots for this date.
           </div>
 
           <div id="time-slots-container" class="d-flex flex-wrap gap-2"></div>
@@ -222,7 +214,6 @@ try {
     </div>
   </div>
 
-  <!-- Expose user + server time to JS -->
   <script>
     window.USER_FULL_NAME = <?= json_encode($fullNameRaw) ?>;
     window.USER_CONTACT   = <?= json_encode($contactRaw) ?>;

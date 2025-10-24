@@ -15,7 +15,7 @@ if (empty($_SESSION['admin_id'])) {
 }
 
 try {
-  $db = isset($db) && $db instanceof PDO ? $db : getDBConnection();
+  $db = getDBConnection();
   $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
   $raw = file_get_contents('php://input') ?: '';
@@ -36,35 +36,35 @@ try {
   $adminId = (int)$_SESSION['admin_id'];
   $nowSql  = date('Y-m-d H:i:s');
 
-  // --- Fetch the display name of the current admin (so we return a name, not just an ID)
+  // Get admin display name (optional but nice for UI)
   $stmtMe = $db->prepare("SELECT first_name, last_name, username FROM admins WHERE admin_id = ? LIMIT 1");
   $stmtMe->execute([$adminId]);
   $me = $stmtMe->fetch(PDO::FETCH_ASSOC) ?: [];
-  $meName = trim(
-    (($me['first_name'] ?? '') . ' ' . ($me['last_name'] ?? ''))
-  );
+  $meName = trim((($me['first_name'] ?? '') . ' ' . ($me['last_name'] ?? '')));
   if ($meName === '') { $meName = (string)($me['username'] ?? ('Admin #'.$adminId)); }
 
   // Look up by id/ref
   $stmtGetById = $db->prepare("
-    SELECT id, reference_number, service_type, status, claimed_at
+    SELECT id, reference_number, service_type, status, paid_at, claimed_at
     FROM service_requests
     WHERE id = ?
     LIMIT 1
   ");
   $stmtGetByRef = $db->prepare("
-    SELECT id, reference_number, service_type, status, claimed_at
+    SELECT id, reference_number, service_type, status, paid_at, claimed_at
     FROM service_requests
     WHERE reference_number = ?
     LIMIT 1
   ");
 
-  // Use distinct placeholders to avoid HY093
+  // Update: mark as completed + claim stamps + release stamps
   $stmtMark = $db->prepare("
     UPDATE service_requests
        SET status = 'completed',
            claimed_at = :claimed_at,
            claimed_by = :claimed_by,
+           released_at = :released_at,
+           released_by_admin_id = :released_by,
            claim_notes = CASE
                            WHEN :notes1 <> '' THEN
                              CONCAT(
@@ -76,7 +76,8 @@ try {
                          END
      WHERE id = :id
        AND LOWER(COALESCE(service_type,'')) <> 'gym'
-       AND LOWER(COALESCE(status,'')) = 'paid'
+       AND paid_at IS NOT NULL
+       AND LOWER(COALESCE(status,'')) NOT IN ('completed','rejected','cancelled','canceled','void','settled')
        AND (claimed_at IS NULL OR claimed_at = '0000-00-00 00:00:00')
      LIMIT 1
   ");
@@ -118,14 +119,19 @@ try {
     $rid      = (int)$row['id'];
     $stype    = strtolower((string)($row['service_type'] ?? ''));
     $status   = strtolower((string)($row['status'] ?? ''));
+    $paidAt   = (string)($row['paid_at'] ?? '');
     $claimed  = $row['claimed_at'] ?? null;
 
     if ($stype === 'gym') {
       $result['error'] = "Gym reservations are not claimed here.";
       $results[] = $result; continue;
     }
-    if ($status !== 'paid') {
-      $result['error'] = "Not claimable (status is '{$status}', expected 'paid').";
+    if ($paidAt === '' || $paidAt === '0000-00-00 00:00:00') {
+      $result['error'] = "Not claimable (no paid_at).";
+      $results[] = $result; continue;
+    }
+    if (in_array($status, ['completed','rejected','cancelled','canceled','void','settled'], true)) {
+      $result['error'] = "Not claimable (status is '{$status}').";
       $results[] = $result; continue;
     }
     if (!empty($claimed) && $claimed !== '0000-00-00 00:00:00') {
@@ -133,10 +139,12 @@ try {
       $results[] = $result; continue;
     }
 
-    // mark claimed
+    // mark claimed + completed + release stamps
     $stmtMark->execute([
       ':claimed_at' => $nowSql,
       ':claimed_by' => $adminId,
+      ':released_at'=> $nowSql,
+      ':released_by'=> $adminId,
       ':notes1'     => $notes,
       ':notes2'     => $notes,
       ':id'         => $rid,
@@ -144,8 +152,8 @@ try {
 
     if ($stmtMark->rowCount() > 0) {
       $result['ok']               = true;
-      $result['released_by_id']   = $adminId;       // keep id if the UI needs it
-      $result['released_by_name'] = $meName;        // <-- NAME for display
+      $result['released_by_id']   = $adminId;
+      $result['released_by_name'] = $meName;
       $result['released_at']      = $nowSql;
       $updatedCount++;
     } else {
@@ -159,7 +167,7 @@ try {
     'success'          => true,
     'updated'          => $updatedCount,
     'released_by_id'   => $adminId,
-    'released_by_name' => $meName,   // <-- include at top-level too
+    'released_by_name' => $meName,
     'results'          => $results
   ];
   if ($DEBUG) {

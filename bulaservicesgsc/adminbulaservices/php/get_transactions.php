@@ -46,7 +46,10 @@ try {
     }
   }
 
-  // Build SQL with cashier (ca), releaser (ra), and approver (ap) names
+  // Canonical SR types
+  $SR_TYPES = "('barangay_clearance','business_permit','indigency','residency','cedula','ivs','low_income','proof_income','gym','other')";
+
+  // Conditional joins prevent ID collisions
   $sql = "
     SELECT
       p.id                  AS payment_id,
@@ -64,10 +67,10 @@ try {
 
       -- link items
       pi.id                 AS payment_item_id,
-      pi.request_type,
+      pi.request_type       AS pi_request_type,
       pi.request_id,
 
-      -- service requests (certificates)
+      -- service requests (only when pi.request_type is SR-type)
       sr.id                 AS sr_id,
       sr.reference_number   AS sr_ref,
       sr.status             AS sr_status,
@@ -86,7 +89,7 @@ try {
       ra.first_name         AS releaser_first,
       ra.last_name          AS releaser_last,
 
-      -- gym reservations
+      -- reservations (only when pi.request_type = 'gym_reservation')
       rs.id                 AS rs_id,
       rs.reference_number   AS rs_ref,
       rs.status             AS rs_status,
@@ -98,18 +101,33 @@ try {
       u.last_name           AS u_last,
       u.contact_number      AS u_contact
     FROM payments p
-    JOIN payment_items pi         ON pi.payment_id = p.id
-    LEFT JOIN service_requests sr ON sr.id = pi.request_id
-    LEFT JOIN admins ra           ON ra.admin_id = sr.claimed_by       -- releaser
-    LEFT JOIN admins ap           ON ap.admin_id = sr.approved_by      -- approver
-    LEFT JOIN reservations rs     ON rs.id = pi.request_id
-    LEFT JOIN users u             ON u.id = p.user_id
-    LEFT JOIN admins ca           ON ca.admin_id = p.cashier_id        -- cashier
+    JOIN payment_items pi
+      ON pi.payment_id = p.id
+
+    -- Conditionally join SRs
+    LEFT JOIN service_requests sr
+      ON sr.id = pi.request_id
+     AND pi.request_type IN $SR_TYPES
+
+    LEFT JOIN admins ra
+      ON ra.admin_id = sr.claimed_by       -- releaser
+    LEFT JOIN admins ap
+      ON ap.admin_id = sr.approved_by      -- approver
+
+    -- Conditionally join reservations
+    LEFT JOIN reservations rs
+      ON rs.id = pi.request_id
+     AND pi.request_type = 'gym_reservation'
+
+    LEFT JOIN users u
+      ON u.id = p.user_id
+    LEFT JOIN admins ca
+      ON ca.admin_id = p.cashier_id        -- cashier
   ";
 
   if (!empty($where)) $sql .= " WHERE ".implode(" AND ", $where);
-  if ($type === 'gym')  { $sql .= (empty($where)?" WHERE ":" AND ")." rs.id IS NOT NULL "; }
-  if ($type === 'cert') { $sql .= (empty($where)?" WHERE ":" AND ")." sr.id IS NOT NULL "; }
+  if ($type === 'gym')  { $sql .= (empty($where)?" WHERE ":" AND ")." pi.request_type = 'gym_reservation' "; }
+  if ($type === 'cert') { $sql .= (empty($where)?" WHERE ":" AND ")." pi.request_type <> 'gym_reservation' "; }
 
   $sql .= " ORDER BY ".($payDateCol ? "p.`$payDateCol` DESC" : "p.id DESC").", pi.id ASC";
 
@@ -117,7 +135,7 @@ try {
   $stmt->execute($params);
   $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-  // group -> payments, add cashier name and per-line approver/releaser
+  // group → payments
   $byPay = [];
   foreach ($rows as $r) {
     $pid = (int)$r['payment_id'];
@@ -139,7 +157,6 @@ try {
         'processed_by'       => (int)$r['cashier_id'],
         'processed_by_name'  => $cashierName,
 
-        // will be summarized across SR lines
         'approved_by'        => null,
         'approved_by_name'   => null,
         'approved_at'        => null,
@@ -148,12 +165,10 @@ try {
 
         'requests'           => [],
 
-        // flags to derive overall payment_status
         '_all_paid'          => true,
         '_any_approved'      => false,
         '_any_rejected'      => false,
 
-        // collectors for summarization
         '_approver_names'    => [],
         '_approver_dates'    => [],
         '_releaser_names'    => [],
@@ -161,11 +176,14 @@ try {
       ];
     }
 
-    $isGym   = !empty($r['rs_id']);
+    $isGym   = (strtolower((string)$r['pi_request_type']) === 'gym_reservation');
     $lineRef = $isGym ? $r['rs_ref'] : $r['sr_ref'];
     $lineSta = strtolower((string)($isGym ? $r['rs_status'] : $r['sr_status']));
-    $svcType = $isGym ? 'Gym' : ($r['sr_service_type'] ?: 'Certificate');
-    $desc    = $isGym
+    $svcType = $isGym
+      ? 'Gym'
+      : ($r['sr_service_type'] ?: 'Certificate');
+
+    $desc = $isGym
       ? ('Gym Reservation '.($r['rs_ref'] ? '#'.$r['rs_ref'] : ''))
       : ($r['sr_purpose'] ?: $svcType);
 
@@ -177,14 +195,14 @@ try {
     if (in_array($lineSta,$approvedish,true))     $byPay[$pid]['_any_approved'] = true;
     if (in_array($lineSta,$rejectedish,true))     $byPay[$pid]['_any_rejected'] = true;
 
-    // ---- approver (SR only) ----
+    // approver (SR only)
     if (!$isGym && !empty($r['sr_approved_by'])) {
       $an = trim((($r['approver_first'] ?? '').' '.($r['approver_last'] ?? '')));
-      if ($an !== '') $byPay[$pid]['_approver_names'][$an] = true; // unique set
+      if ($an !== '') $byPay[$pid]['_approver_names'][$an] = true;
       if (!empty($r['sr_approved_date'])) $byPay[$pid]['_approver_dates'][] = $r['sr_approved_date'];
     }
 
-    // ---- released by (SR only) ----
+    // releaser (SR only)
     $releasedByName = null;
     $releasedAt     = null;
     if (!$isGym) {
@@ -201,14 +219,14 @@ try {
       'service_type'      => $svcType,
       'description'       => $desc,
       'status'            => $lineSta ?: 'pending',
-      'released_by_name'  => $releasedByName,   // null for gym
+      'released_by_name'  => $releasedByName,
       'released_at'       => $releasedAt,
       'claimed_by_admin'  => $r['sr_claimed_by'] ?: null,
       'claimed_at'        => $r['sr_claimed_at'] ?: null
     ];
   }
 
-  // finalize payment status and summarize actors
+  // summarize
   $out = [];
   foreach ($byPay as $p) {
     if ($p['_any_rejected'])      { $p['payment_status'] = 'rejected'; }
@@ -216,35 +234,27 @@ try {
     elseif ($p['_any_approved'])  { $p['payment_status'] = 'approved'; }
     else                          { $p['payment_status'] = 'pending'; }
 
-    // summarize approver names/dates
     $approverNames = array_keys($p['_approver_names']);
-    if (count($approverNames) > 1) {
-      $p['approved_by_name'] = 'Multiple';
-    } elseif (count($approverNames) === 1) {
-      $p['approved_by_name'] = $approverNames[0];
-    }
+    if (count($approverNames) > 1)      $p['approved_by_name'] = 'Multiple';
+    elseif (count($approverNames) === 1) $p['approved_by_name'] = $approverNames[0];
+
     if (!empty($p['_approver_dates'])) {
       rsort($p['_approver_dates']);
-      $p['approved_at'] = $p['_approver_dates'][0]; // most recent
+      $p['approved_at'] = $p['_approver_dates'][0];
     }
 
-    // summarize releasers
     $releaserNames = array_keys($p['_releaser_names']);
-    if (count($releaserNames) > 1) {
-      $p['released_by_summary'] = 'Multiple';
-    } elseif (count($releaserNames) === 1) {
-      $p['released_by_summary'] = $releaserNames[0];
-    }
+    if (count($releaserNames) > 1)      $p['released_by_summary'] = 'Multiple';
+    elseif (count($releaserNames) === 1) $p['released_by_summary'] = $releaserNames[0];
+
     if (!empty($p['_releaser_dates'])) {
       rsort($p['_releaser_dates']);
-      $p['released_at_summary'] = $p['_releaser_dates'][0]; // most recent
+      $p['released_at_summary'] = $p['_releaser_dates'][0];
     }
 
-    unset(
-      $p['_all_paid'], $p['_any_approved'], $p['_any_rejected'],
-      $p['_approver_names'], $p['_approver_dates'],
-      $p['_releaser_names'], $p['_releaser_dates']
-    );
+    unset($p['_all_paid'], $p['_any_approved'], $p['_any_rejected'],
+          $p['_approver_names'], $p['_approver_dates'],
+          $p['_releaser_names'], $p['_releaser_dates']);
 
     $out[] = $p;
   }

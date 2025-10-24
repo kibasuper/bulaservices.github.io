@@ -1,31 +1,13 @@
 <?php
 declare(strict_types=1);
 
-// OPTIONAL session (admin side may or may not force login here)
-session_name('BARANGAY_BULA_SESSID');
-if (session_status() === PHP_SESSION_NONE) session_start();
-
 try {
   require_once __DIR__ . '/server/config.php';
-
-  // Optional prefill from session if available
-  $prefillName = '';
-  $prefillContact = '';
-  if (!empty($_SESSION)) {
-    $prefillName = trim(
-      (string)(
-        $_SESSION['full_name']
-        ?? (($_SESSION['first_name'] ?? '') . ' ' . ($_SESSION['last_name'] ?? ''))
-        ?? ''
-      )
-    );
-    $prefillContact = trim((string)($_SESSION['contact_number'] ?? $_SESSION['contact'] ?? ''));
-  }
 
   // Server "now" (Asia/Manila) for client alignment
   $serverNowISO = (new DateTimeImmutable('now', new DateTimeZone('Asia/Manila')))->format('c');
 
-  // --- NEW: read live gym rates for initial banner ---
+  // Read live gym rates for initial banner
   $db = getDBConnection();
   $row = $db->query("SELECT morning_rate, evening_rate FROM gym_pricing WHERE id = 1")->fetch();
   $morningRate = isset($row['morning_rate']) ? (float)$row['morning_rate'] : 200.0;
@@ -42,7 +24,7 @@ try {
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Barangay Bula - Gym Reservation</title>
+  <title>Barangay Bula - Gym Reservation (Admin)</title>
 
   <!-- Vendor CSS -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"/>
@@ -60,35 +42,7 @@ try {
     .header-actions{display:flex;align-items:center;gap:1rem}
     .dashboard-link{display:inline-flex;align-items:center;gap:.5rem;text-decoration:none;font-weight:600;color:#4361ee;background:rgba(67,97,238,.08);padding:.5rem .75rem;border-radius:10px;transition:background .2s ease, transform .2s ease}
     .dashboard-link:hover{background:rgba(67,97,238,.15);transform:translateY(-1px)}
-    .user-menu{display:flex;align-items:center;gap:.5rem;background:#f8fafc;border:1px solid #e5e7eb;padding:.45rem .75rem;border-radius:10px;font-weight:600;color:#374151}
-    .user-menu i{color:#6b7280}
     .container{padding-top:80px}
-
-    .time-slot-card.past{opacity:.45;cursor:not-allowed!important;filter:grayscale(20%)}
-
-    .calendar-legend{display:flex;flex-wrap:wrap;gap:1rem;margin-top:1rem;justify-content:center}
-    .legend-item{display:flex;align-items:center;gap:.5rem;font-size:.9rem}
-    .legend-color{width:20px;height:20px;border-radius:4px}
-    .time-slot-card{width:140px;padding:12px 8px;border:2px solid #dee2e6;border-radius:8px;text-align:center;cursor:pointer;transition:all .2s ease;margin-bottom:8px;position:relative;background:#fff}
-    .time-slot-card.morning-rate{border-color:#4cc9f0}
-    .time-slot-card.evening-rate{border-color:#ff6b35}
-    .rate-badge{position:absolute;top:4px;right:4px;font-size:10px;padding:2px 6px;border-radius:10px;font-weight:bold;color:#fff}
-    .rate-badge.morning{background-color:#4cc9f0}
-    .rate-badge.evening{background-color:#ff6b35}
-    .time-slot-card.selected{background-color:rgba(67,97,238,.1)}
-    .rate-info-alert{background:linear-gradient(135deg, rgba(76,201,240,.1) 0%, rgba(255,107,53,.1) 100%);border-left:4px solid #4361ee}
-    .morning-badge{background-color:#4cc9f0!important}
-    .evening-badge{background-color:#ff6b35!important}
-
-    #printArea { display:none; }
-    @media print {
-      body * { visibility:hidden !important; }
-      #printArea, #printArea * { visibility:visible !important; }
-      #printArea { display:block; position:static; padding:0; margin:0; }
-      .print-simple { width: 420px; margin: 0 auto; font-family: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; color:#111; font-size: 12pt; }
-      .print-simple h3 { margin: 0 0 10px 0; text-align:center; font-size: 14pt; }
-      .print-row { display:flex; justify-content:space-between; margin: 6px 0; border-bottom: 1px dashed #ccc; padding-bottom: 6px; }
-    }
   </style>
 </head>
 <body>
@@ -111,11 +65,18 @@ try {
     <div id="calendar"></div>
 
     <div class="calendar-legend">
-      <div class="legend-item"><div class="legend-color" style="background-color: rgba(76,201,240,.1)"></div><span>Available</span></div>
-      <div class="legend-item"><div class="legend-color" style="background-color: rgba(255,190,11,.1)"></div><span>Limited Slots</span></div>
-      <div class="legend-item"><div class="legend-color" style="background-color: rgba(247,37,133,.1)"></div><span>Fully Booked</span></div>
-      <div class="legend-item"><div class="legend-color" style="background-color: rgba(255,193,7,.2)"></div><span>Maintenance</span></div>
-      <div class="legend-item"><div class="legend-color" style="background-color: rgba(0,0,0,.05)"></div><span>Past (today)</span></div>
+      <div class="legend-item">
+        <div class="legend-color available"></div><span>Available</span>
+      </div>
+      <div class="legend-item">
+        <div class="legend-color limited"></div><span>Limited Slots</span>
+      </div>
+      <div class="legend-item">
+        <div class="legend-color full"></div><span>Fully Booked</span>
+      </div>
+      <div class="legend-item">
+        <div class="legend-color past"></div><span>Past date</span>
+      </div>
     </div>
   </div>
 
@@ -130,7 +91,6 @@ try {
         <div class="modal-body">
           <h6 id="selectedDateHeader" class="mb-3"></h6>
 
-          <!-- NEW: dynamic, server-rendered banner + JS-updatable span -->
           <div class="alert rate-info-alert">
             <strong>Rate Information:</strong>
             <span id="currentRates" class="ms-2">
@@ -188,17 +148,20 @@ try {
 
             <div class="mb-3">
               <label class="form-label">Full Name</label>
-              <input type="text" id="residentName" class="form-control"
-                     value="<?= htmlspecialchars($prefillName, ENT_QUOTES, 'UTF-8') ?>"
-                     placeholder="Juan Dela Cruz" required/>
+              <input type="text" id="residentName" class="form-control" placeholder="Juan Dela Cruz" required/>
             </div>
             <div class="mb-3">
               <label class="form-label">Contact Number</label>
-              <input type="tel" id="contactNumber" class="form-control"
-                     value="<?= htmlspecialchars($prefillContact, ENT_QUOTES, 'UTF-8') ?>"
-                     placeholder="09XXXXXXXXX" required inputmode="numeric"
-                     pattern="^0\d{10}$"
-                     title="Please enter an 11-digit PH mobile number starting with 0 (e.g., 09XXXXXXXXX)"/>
+              <input
+                type="tel"
+                id="contactNumber"
+                class="form-control"
+                placeholder="09XXXXXXXXX"
+                required
+                inputmode="numeric"
+                pattern="^0\d{10}$"
+                title="Please enter an 11-digit PH mobile number starting with 0 (e.g., 09XXXXXXXXX)"
+              />
               <div class="form-text">Format: 11 digits, starts with 0 (e.g., 09XXXXXXXXX)</div>
             </div>
             <div class="mb-3">
@@ -254,13 +217,10 @@ try {
     </div>
   </div>
 
-  <!-- Expose server time + optional prefill (readable by JS) -->
+  <!-- Expose server time & API URL only -->
   <script>
     window.SERVER_NOW_ISO  = <?= json_encode($serverNowISO) ?>;
-    window.PREFILL_NAME    = <?= json_encode($prefillName) ?>;
-    window.PREFILL_CONTACT = <?= json_encode($prefillContact) ?>;
-    // (optionally) point to a proxy if you use one:
-    window.GYM_API_URL     = '/adminbulaservices/php/gyms_proxy.php';
+    window.GYM_API_URL     = '/adminbulaservices/php/gyms_proxy.php'; /* if you use a proxy */
   </script>
 
   <!-- Vendor JS -->

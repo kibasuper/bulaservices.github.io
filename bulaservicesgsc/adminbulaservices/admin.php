@@ -65,8 +65,8 @@ $is_superadmin  = ($admin_role === 'superadmin');
     <div class="quick-actions-section">
       <h2 class="section-title">People Management</h2>
       <div class="actions-grid">
-        <a href="officials.php" class="action-card"><i class="fas fa-users-cog"></i><span>Officials Management</span></a>
-        <a href="resident.php" class="action-card"><i class="fas fa-users"></i><span>Resident Management</span></a>
+        <a href="officials.php" class="action-card"><i class="fas fa-users-cog"></i><span>Staff Account Management</span></a>
+        <a href="resident.php" class="action-card"><i class="fas fa-users"></i><span>Resident Account Management</span></a>
         <a href="report.php" class="action-card"><i class="fas fa-chart-bar"></i><span>Reports</span></a>
         <a href="Pricing.php" class="action-card"><i class="fas fa-file-alt"></i><span>Pricing</span></a>
       </div>

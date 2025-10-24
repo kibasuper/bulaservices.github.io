@@ -500,3 +500,100 @@ body {
   .requests-list-section { padding: 1rem; }
   .requests-table td, .requests-table th { padding: 0.75rem; }
 }
+
+/* ===== Unified modal overlay (backdrop) ===== */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  display: none;
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+}
+.modal-overlay.active { display: flex; }
+
+/* ===== Modal card used by reviewRequest() ===== */
+.modal-card {
+  width: min(680px, 92vw);
+  background: #fff;
+  border-radius: var(--radius, 12px);
+  box-shadow:
+    0 20px 40px rgba(0,0,0,.18),
+    0 2px 8px rgba(0,0,0,.08);
+  overflow: hidden;
+  transform: translateY(8px) scale(.98);
+  opacity: 0;
+  animation: modal-in .22s ease-out forwards;
+}
+@keyframes modal-in {
+  to { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+/* ===== Header / icon / titles as used in JS ===== */
+.modal-header {
+  position: relative;
+  padding: 18px 20px 16px 88px;
+  background: linear-gradient(180deg, #f7f9fc 0%, #ffffff 100%);
+  border-bottom: 1px solid #eef2f7;
+}
+.modal-icon-wrap {
+  position: absolute;
+  left: 20px; top: 16px;
+  width: 56px; height: 56px;
+  border-radius: 14px;
+  display: grid; place-items: center;
+  background: #ecfdf5; /* light success bg by default */
+  color: var(--gym-green, #10b981);
+  font-size: 22px;
+}
+.modal-title {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+.modal-subtitle {
+  margin: 4px 0 0;
+  font-size: .9rem;
+  color: #475569;
+}
+
+/* ===== Body / actions ===== */
+.modal-body { padding: 18px 20px; color: #1f2937; line-height: 1.45; }
+.modal-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  padding: 14px 16px;
+  border-top: 1px solid #eef2f7;
+  background: #fafbfc;
+}
+
+/* ===== Buttons (reuse your existing tokens) ===== */
+.modal-btn {
+  border: 0;
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: transform .06s ease, opacity .12s ease, background .12s ease;
+  user-select: none;
+}
+.modal-btn:active { transform: translateY(1px); }
+.close-btn   { background: #e5e7eb; color: #111827; }
+.approve-btn { background: var(--success, #059669); color: #fff; }
+.reject-btn  { background: var(--danger, #dc2626); color: #fff; }
+
+/* ===== Detail rows / slots — matches your JS output ===== */
+.detail-row { display:flex; gap:10px; padding:6px 0; }
+.detail-label { min-width: 150px; color: var(--text-light, #64748b); font-weight:600; }
+.slots-display { display:flex; flex-wrap:wrap; gap:.5rem; }
+.slot-badge { padding:.25rem .5rem; background:#eff6ff; border-radius:4px; font-size:.75rem; color: var(--primary, #2563eb); }
+.status-badge { padding: 3px 8px; border-radius: 999px; font-size: .8rem; font-weight: 600; }
+.status-approved { background:#ecfdf5; color:#047857; }
+.status-rejected { background:#fef2f2; color:#b91c1c; }
+.status-completed { background:#eef2ff; color:#3730a3; }

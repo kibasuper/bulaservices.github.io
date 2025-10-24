@@ -232,26 +232,6 @@ window.reviewRequest = async function(ref) {
 
           <div class="divider"></div>
 
-          <div class="section-title">Transaction Details</div>
-          <div class="tx-grid">
-            <div class="tx-item">
-              <div class="tx-label">Approved By</div>
-              <div class="tx-value">${escapeHtml(approvedBy)}</div>
-              <div class="tx-date">${escapeHtml(approvedOn)}</div>
-            </div>
-            <div class="tx-item">
-              <div class="tx-label">Processed By</div>
-              <div class="tx-value">${escapeHtml(processedBy)}</div>
-              <div class="tx-date">${escapeHtml(processedOn)}</div>
-            </div>
-            <div class="tx-item">
-              <div class="tx-label">Released By</div>
-              <div class="tx-value">${escapeHtml(releasedBy)}</div>
-              <div class="tx-date">${escapeHtml(releasedOn)}</div>
-            </div>
-          </div>
-        </div>
-
         <div class="modal-actions">
           ${actionsHtml}
         </div>

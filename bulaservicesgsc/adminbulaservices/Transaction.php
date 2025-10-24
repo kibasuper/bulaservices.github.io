@@ -98,7 +98,7 @@ if (!isset($_SESSION['admin_id'])) {
                 <th>Receipt #</th>   <!-- NEW column -->
                 <th>Date & Time</th>
                 <th>Customer</th>
-                <th>Service Items</th>
+                <th>Service Item(s)</th>
                 <th>Amount</th>
                 <th>Status</th>
                 <th>Actions</th>

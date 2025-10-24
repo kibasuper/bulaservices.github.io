@@ -4,6 +4,9 @@
   --warning:#ffbe0b; --light:#f8f9fa; --dark:#212529; --gray:#6c757d;
   --light-gray:#e9ecef; --border-radius:12px; --box-shadow:0 8px 24px rgba(0,0,0,.08);
   --transition:.3s ease; --morning-rate:#4cc9f0; --evening-rate:#ff6b35;
+
+  /* extra: real red for FULL days */
+  --danger-red:#ef4444;
 }
 
 body{
@@ -23,18 +26,57 @@ body{
 
 .container{padding-top:80px; margin-top:0}
 
-#calendar{background:#fff; border-radius:var(--border-radius); box-shadow:var(--box-shadow); padding:1.5rem; margin-bottom:2rem}
-.fc .fc-daygrid-day-number{font-size:1.6rem; font-weight:600; padding:8px; color:var(--dark); width:100%; text-align:center; margin-top:8px; text-decoration:none!important}
-.fc-day-past:not(.fc-day-other){opacity:.6; background-color:rgba(108,117,125,.1)}
+#calendar{
+  background:#fff; border-radius:var(--border-radius); box-shadow:var(--box-shadow);
+  padding:1.5rem; margin-bottom:2rem
+}
+
+/* Modernized day cell look */
+.fc .fc-daygrid-day-frame{
+  min-height:100px; display:flex; flex-direction:column; align-items:center; justify-content:flex-start;
+  border-radius:10px; overflow:hidden; /* smooth corners for solid fills */
+  transition: box-shadow .2s ease, transform .2s ease, background-color .2s ease;
+  border:1px solid rgba(0,0,0,0.04);
+}
+.fc .fc-daygrid-day:hover:not(.fc-day-past) .fc-daygrid-day-frame{
+  box-shadow:0 6px 18px rgba(0,0,0,.08);
+  transform: translateY(-1px);
+}
+
+/* Day numbers */
+.fc .fc-daygrid-day-number{
+  font-size:1.6rem; font-weight:700; padding:8px; color:var(--dark);
+  width:100%; text-align:center; margin-top:8px; text-decoration:none!important;
+  position:relative; z-index:1;
+}
+
+/* Toolbar */
+.fc .fc-toolbar-title{font-size:1.8rem; font-weight:700; color:var(--primary)}
+.fc .fc-button{font-size:1rem; padding:.5rem 1rem; background:var(--primary); border:none; color:#fff}
+.fc .fc-button:hover{background:var(--primary-dark)}
+
+/* Past days: gray + disabled (number still visible) */
+.fc-day-past:not(.fc-day-other){
+  background-color: rgba(108,117,125,.18) !important;
+  opacity: 1;
+}
 .fc-day-past .fc-daygrid-day-number{color:var(--gray)}
 .fc-day-past{pointer-events:none; cursor:default}
-.fc .fc-daygrid-day.fc-day-today{background-color:rgba(67,97,238,.1)}
-.fc .fc-daygrid-day.fc-day-today .fc-daygrid-day-number{color:var(--primary); font-weight:700}
-.fc .fc-toolbar-title{font-size:1.8rem; font-weight:700; color:var(--primary)}
-.fc .fc-button{font-size:1rem; padding:.5rem 1rem; background:var(--primary); border:none}
-.fc .fc-button:hover{background:var(--primary-dark)}
-.fc .fc-daygrid-day-frame{min-height:100px; display:flex; flex-direction:column; align-items:center; justify-content:flex-start}
 
+/* Today: subtle two-sided glow (inset), solid blue wash, still clickable */
+.fc .fc-daygrid-day.fc-day-today .fc-daygrid-day-frame{
+  background-color: rgba(67,97,238, .18) !important;
+  /* inset glow on left & right + soft outer glow */
+  box-shadow:
+    inset 6px 0 12px rgba(67,97,238,.25),
+    inset -6px 0 12px rgba(67,97,238,.25),
+    0 0 0 2px rgba(67,97,238,.25);
+}
+.fc .fc-daygrid-day.fc-day-today .fc-daygrid-day-number{
+  color: var(--primary); font-weight:800;
+}
+
+/* RESPONSIVE */
 @media(max-width:768px){
   .fc .fc-toolbar{flex-direction:column; gap:1rem}
   .fc .fc-toolbar-title{font-size:1.5rem}
@@ -47,22 +89,42 @@ body{
   .fc .fc-button{padding:.4rem .8rem; font-size:.9rem}
 }
 
+/* Legend */
 .calendar-legend{display:flex; flex-wrap:wrap; gap:1rem; margin-top:1rem; justify-content:center}
 .legend-item{display:flex; align-items:center; gap:.5rem; font-size:.9rem}
 .legend-color{width:20px; height:20px; border-radius:4px}
+.legend-color.available { background-color: rgba(67, 97, 238, .75); }  /* blue */
+.legend-color.limited   { background-color: rgba(255, 190, 11, .75); }  /* amber */
+.legend-color.full      { background-color: rgba(239, 68, 68, .75); }   /* red */
+.legend-color.past      { background-color: rgba(108, 117, 125, .35); } /* gray */
 
+/* SOLID, STRONG day fills (set by JS via background events) */
+.fc .bg-day-available { background-color: rgba(67, 97, 238, .70) !important; }   /* BLUE (primary) */
+.fc .bg-day-limited   { background-color: rgba(255, 190, 11, .70) !important; }  /* AMBER (warning) */
+.fc .bg-day-full      { background-color: rgba(239, 68, 68, .70) !important; }   /* RED (danger-red) */
+
+/* Auto-contrast day numbers on colored days */
+.fc .bg-day-available ~ .fc-daygrid-day-top .fc-daygrid-day-number,
+.fc .bg-day-limited   ~ .fc-daygrid-day-top .fc-daygrid-day-number,
+.fc .bg-day-full      ~ .fc-daygrid-day-top .fc-daygrid-day-number {
+  color: #fff !important;
+  text-shadow: 0 1px 0 rgba(0,0,0,.25);
+}
+
+/* Time slots (modal) */
 .time-slot-card{width:140px; padding:12px 8px; border:2px solid #dee2e6; border-radius:8px; text-align:center; cursor:pointer; transition:all .2s ease; margin-bottom:8px; position:relative}
 .time-slot-card:hover:not(.booked){transform:translateY(-2px); box-shadow:0 4px 8px rgba(0,0,0,.1)}
-.time-slot-card.selected{background-color:rgba(67,97,238,.1); color:var(--primary); font-weight:600}
+.time-slot-card.selected{background-color:rgba(67,97,238,.18); color:var(--primary); font-weight:600; border-color:var(--primary)}
+
 .time-slot-card.booked{background:#f8f9fa; border-color:#dee2e6; color:#6c757d; cursor:not-allowed; opacity:.7}
 
 .time-slot-card.morning-rate{border-color:var(--morning-rate)}
 .time-slot-card.morning-rate:hover:not(.booked){box-shadow:0 4px 8px rgba(76,201,240,.3)}
-.time-slot-card.morning-rate.selected{border-color:var(--morning-rate); background-color:rgba(76,201,240,.1)}
+.time-slot-card.morning-rate.selected{border-color:var(--morning-rate); background-color:rgba(76,201,240,.18)}
 
 .time-slot-card.evening-rate{border-color:var(--evening-rate)}
 .time-slot-card.evening-rate:hover:not(.booked){box-shadow:0 4px 8px rgba(255,107,53,.3)}
-.time-slot-card.evening-rate.selected{border-color:var(--evening-rate); background-color:rgba(255,107,53,.1)}
+.time-slot-card.evening-rate.selected{border-color:var(--evening-rate); background-color:rgba(255,107,53,.18)}
 
 .rate-badge{position:absolute; top:4px; right:4px; font-size:10px; padding:2px 6px; border-radius:10px; font-weight:bold; color:#fff}
 .rate-badge.morning{background-color:var(--morning-rate)}
@@ -81,4 +143,3 @@ body{
 }
 .morning-badge{background-color:var(--morning-rate)!important}
 .evening-badge{background-color:var(--evening-rate)!important}
-

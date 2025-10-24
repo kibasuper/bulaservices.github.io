@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 /**
  * USER SIDE — Gymback.php
- * - Public:  action=get_slots
+ * - Public:  action=get_slots, get_month_summary
  * - Auth:    action=create_reservation  (expects $_SESSION['user_id'])
  */
 require_once __DIR__ . '/../server/config.php'; // starts session + PDO + security headers
@@ -81,6 +81,65 @@ $action = $input['action'] ?? '';
 try {
   $db = db();
 
+  /* ===== get_month_summary (PUBLIC) ===== */
+  if ($action === 'get_month_summary') {
+    $year  = (int)($input['year'] ?? 0);
+    $month = (int)($input['month'] ?? 0);
+
+    if ($year < 1970 || $year > 2100 || $month < 1 || $month > 12) {
+      echo json_encode(['status'=>'error','message'=>'Invalid year or month']); exit;
+    }
+
+    $start = sprintf('%04d-%02d-01', $year, $month);
+    $startDT = DateTimeImmutable::createFromFormat('Y-m-d', $start, new DateTimeZone('Asia/Manila'));
+    if (!$startDT) { echo json_encode(['status'=>'error','message'=>'Invalid date']); exit; }
+    $endDT = $startDT->modify('last day of this month');
+
+    $stmt = $db->prepare("
+      SELECT reservation_date, time_slots
+      FROM reservations
+      WHERE reservation_date BETWEEN ? AND ?
+        AND TRIM(LOWER(COALESCE(status,''))) NOT IN ('cancelled','rejected')
+    ");
+    $stmt->execute([$startDT->format('Y-m-d'), $endDT->format('Y-m-d')]);
+
+    $bookedMap = []; // date => set of hours
+    while ($row = $stmt->fetch()) {
+      $date = (string)$row['reservation_date'];
+      if (!isset($bookedMap[$date])) $bookedMap[$date] = [];
+      $slots = json_decode($row['time_slots'] ?? '[]', true);
+      if (is_array($slots)) {
+        foreach ($slots as $s) {
+          if (isset($s['hour'])) {
+            $bookedMap[$date][(int)$s['hour']] = true;
+          }
+        }
+      }
+    }
+
+    $TOTAL_SLOTS = 15; // 7:00–22:00
+    $days = [];
+    $cursor = $startDT;
+    while ($cursor <= $endDT) {
+      $d = $cursor->format('Y-m-d');
+      $bookedCount = isset($bookedMap[$d]) ? count($bookedMap[$d]) : 0;
+      $days[] = ['date' => $d, 'booked' => $bookedCount];
+      $cursor = $cursor->modify('+1 day');
+    }
+
+    $serverNow = (new DateTimeImmutable('now', new DateTimeZone('Asia/Manila')))->format('c');
+    $rates = gym_rates($db);
+
+    echo json_encode([
+      'status'     => 'success',
+      'server_now' => $serverNow,
+      'rates'      => ['morning' => (float)$rates['morning'], 'evening' => (float)$rates['evening']],
+      'days'       => $days,
+      'total_per_day' => $TOTAL_SLOTS
+    ]);
+    exit;
+  }
+
   /* ===== get_slots (PUBLIC) ===== */
   if ($action === 'get_slots') {
     $date = trim((string)($input['date'] ?? ''));
@@ -102,9 +161,7 @@ try {
       }
     }
 
-    // include live rates
     $rates = gym_rates($db);
-
     $serverNow = (new DateTimeImmutable('now', new DateTimeZone('Asia/Manila')))->format('c');
     echo json_encode([
       'status'     => 'success',

@@ -1,4 +1,4 @@
-// script/gym.js (USER)
+// script/gym.js — solid color mapping, today clickable, past disabled
 document.addEventListener('DOMContentLoaded', () => {
   const timeSlotModal = new bootstrap.Modal(document.getElementById('timeSlotModal'));
   const reservationModal = new bootstrap.Modal(document.getElementById('reservationFormModal'));
@@ -18,10 +18,9 @@ document.addEventListener('DOMContentLoaded', () => {
   function serverNowParts() { const d = new Date(serverNowMs()); return { y:d.getFullYear(), m:d.getMonth()+1, d:d.getDate(), hour:d.getHours() }; }
   function isSameYMD(dateStr, parts) { const [Y,M,D] = dateStr.split('-').map(n=>parseInt(n,10)); return Y===parts.y && M===parts.m && D===parts.d; }
 
-  // Live-editable rates (defaults; updated from server on load)
   const RATES = { MORNING: 200, EVENING: 300 };
+  let monthSummaryCache = {};
 
-  // ---- API base ----
   const GYM_API = './php/Gymback.php';
   async function postGym(payload) {
     const res = await fetch(GYM_API, {
@@ -43,6 +42,69 @@ document.addEventListener('DOMContentLoaded', () => {
   let activeQuickSelect = null;
   let calendar;
 
+  function setDayColorBackgrounds(items) {
+    const prev = calendar.getEventSources().find(s => s.internalTag === 'dayColors');
+    if (prev) prev.remove();
+    const events = items.map(it => ({
+      start: it.date,
+      end: new Date(new Date(it.date).getTime() + 86400000).toISOString().slice(0,10),
+      display: 'background',
+      classNames: [it.className],
+      allDay: true
+    }));
+    const src = calendar.addEventSource(events);
+    src.internalTag = 'dayColors';
+  }
+
+  function classifyDay(bookedCount, totalPerDay) {
+    // mapping is handled in CSS: available=BLUE, limited=AMBER, full=RED
+    if (bookedCount <= 0) return 'bg-day-available';
+    if (bookedCount >= totalPerDay) return 'bg-day-full';
+    return 'bg-day-limited';
+  }
+
+  function ymd(dateObj) {
+    const y = dateObj.getFullYear();
+    const m = (dateObj.getMonth()+1).toString().padStart(2,'0');
+    const d = dateObj.getDate().toString().padStart(2,'0');
+    return `${y}-${m}-${d}`;
+  }
+
+  async function loadMonthSummary() {
+    const vis = calendar.view.currentStart;
+    const y = vis.getFullYear();
+    const m = vis.getMonth() + 1;
+    const key = `${y}-${String(m).padStart(2,'0')}`;
+
+    if (monthSummaryCache[key]) return monthSummaryCache[key];
+
+    const res = await postGym({ action: 'get_month_summary', year: y, month: m });
+
+    if (res.server_now) alignServerNow(res.server_now);
+    if (res.rates && typeof res.rates.morning === 'number' && typeof res.rates.evening === 'number') {
+      RATES.MORNING = res.rates.morning;
+      RATES.EVENING = res.rates.evening;
+    }
+
+    const totalPerDay = res.total_per_day || 15;
+    const map = {};
+    (res.days || []).forEach(d => { map[d.date] = { booked: d.booked }; });
+
+    const summary = { daysMap: map, totalPerDay };
+    monthSummaryCache[key] = summary;
+    return summary;
+  }
+
+  function markPastDays() {
+    const parts = serverNowParts();
+    const todayStr = `${parts.y}-${String(parts.m).padStart(2,'0')}-${String(parts.d).padStart(2,'0')}`;
+    document.querySelectorAll('.fc-daygrid-day').forEach(cell => {
+      const cellDate = cell.getAttribute('data-date');
+      if (!cellDate) return;
+      if (cellDate < todayStr) cell.classList.add('fc-day-past'); else cell.classList.remove('fc-day-past');
+    });
+  }
+
   function initCalendar() {
     const el = document.getElementById('calendar');
     calendar = new FullCalendar.Calendar(el, {
@@ -50,14 +112,36 @@ document.addEventListener('DOMContentLoaded', () => {
       headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek,timeGridDay' },
       height: 'auto',
       dateClick: onDateClick,
-      nowIndicator: true,
-      validRange: { start: new Date() }
+      datesSet: async () => {
+        try {
+          const summary = await loadMonthSummary();
+          const parts = serverNowParts();
+          const todayStr = `${parts.y}-${String(parts.m).padStart(2,'0')}-${String(parts.d).padStart(2,'0')}`;
+
+          const items = [];
+          Object.keys(summary.daysMap).forEach(d => {
+            if (d < todayStr) return; // past is gray only
+            const booked = summary.daysMap[d].booked || 0;
+            const className = classifyDay(booked, summary.totalPerDay);
+            items.push({ date: d, className });
+          });
+
+          setDayColorBackgrounds(items);
+          setTimeout(markPastDays, 0);
+        } catch (e) {
+          console.error('month summary error:', e);
+        }
+      }
     });
     calendar.render();
   }
 
   function onDateClick(info) {
-    selectedDate = info.dateStr;
+    const clickedYMD = ymd(info.date);
+    const parts = serverNowParts();
+    const todayStr = `${parts.y}-${String(parts.m).padStart(2,'0')}-${String(parts.d).padStart(2,'0')}`;
+    if (clickedYMD < todayStr) return; // past disabled
+    selectedDate = clickedYMD;
     document.getElementById('selectedDateHeader').textContent =
       new Date(selectedDate).toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
     loadTimeSlots(selectedDate);
@@ -89,15 +173,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function loadTimeSlots(date) {
     const container = document.getElementById('time-slots-container');
-    container.innerHTML = '';
+    const quickWrap = document.getElementById('quickSelectWrap');
+    const noSlotsMsg = document.getElementById('noSlotsMsg');
+
+    if (container) container.innerHTML = '';
     selectedSlots = [];
-    document.getElementById('selectedSlotsSummary').style.display = 'none';
-    document.getElementById('proceedToReservation').disabled = true;
+    const summaryEl = document.getElementById('selectedSlotsSummary');
+    if (summaryEl) summaryEl.style.display = 'none';
+    const proceedBtn = document.getElementById('proceedToReservation');
+    if (proceedBtn) proceedBtn.disabled = true;
+    if (noSlotsMsg) noSlotsMsg.classList.add('d-none');
+    if (quickWrap) quickWrap.classList.remove('d-none');
 
     try {
       const res = await postGym({ action: 'get_slots', date });
 
-      // NEW: adopt live rates from server
       if (res.rates && typeof res.rates.morning === 'number' && typeof res.rates.evening === 'number') {
         RATES.MORNING = res.rates.morning;
         RATES.EVENING = res.rates.evening;
@@ -115,10 +205,24 @@ document.addEventListener('DOMContentLoaded', () => {
         past: isToday ? (s.hour <= parts.hour) : false
       }));
 
-      slots.forEach(slot => renderSlot(container, slot));
-      renderCurrentRates(); // optional display
+      const selectable = slots.filter(s => !s.booked && !s.past);
+      if (selectable.length === 0) {
+        if (noSlotsMsg) noSlotsMsg.classList.remove('d-none');
+        if (quickWrap) quickWrap.classList.add('d-none');
+      }
+
+      if (container) slots.forEach(slot => renderSlot(container, slot));
+      renderCurrentRates();
+
+      // refresh month summary next time
+      const vis = calendar.view.currentStart;
+      const key = `${vis.getFullYear()}-${String(vis.getMonth()+1).padStart(2,'0')}`;
+      if (monthSummaryCache[key]) delete monthSummaryCache[key];
+
     } catch (e) {
-      container.innerHTML = `<div class="alert alert-danger"><i class="fa fa-triangle-exclamation me-2"></i>Failed to load slots.</div>`;
+      if (container) {
+        container.innerHTML = `<div class="alert alert-danger"><i class="fa fa-triangle-exclamation me-2"></i>Failed to load slots.</div>`;
+      }
       console.error(e);
     }
   }
@@ -168,7 +272,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (idx === -1) { selectedSlots.push(slot); card.classList.add('selected'); }
     else { selectedSlots.splice(idx, 1); card.classList.remove('selected'); }
     updateSummary();
-    document.getElementById('proceedToReservation').disabled = selectedSlots.length === 0;
+    const proceedBtn = document.getElementById('proceedToReservation');
+    if (proceedBtn) proceedBtn.disabled = selectedSlots.length === 0;
     activeQuickSelect = null;
     updateQuickButtons();
   }
@@ -180,23 +285,25 @@ document.addEventListener('DOMContentLoaded', () => {
     const breakdownEl = document.getElementById('rateBreakdown');
 
     if (selectedSlots.length === 0) {
-      wrap.style.display = 'none';
-      totalEl.textContent = '₱0';
-      breakdownEl.textContent = '';
+      if (wrap) wrap.style.display = 'none';
+      if (totalEl) totalEl.textContent = '₱0';
+      if (breakdownEl) breakdownEl.textContent = '';
       return;
     }
 
-    wrap.style.display = 'block';
-    list.innerHTML = selectedSlots
-      .sort((a,b)=>a.hour-b.hour)
-      .map(s => `• ${s.time} <small class="text-muted">(₱${s.rate}/hr)</small>`)
-      .join('<br/>');
+    if (wrap) wrap.style.display = 'block';
+    if (list) {
+      list.innerHTML = selectedSlots
+        .sort((a,b)=>a.hour-b.hour)
+        .map(s => `• ${s.time} <small class="text-muted">(₱${s.rate}/hr)</small>`)
+        .join('<br/>');
+    }
 
     const morning = selectedSlots.filter(s => s.rateType === 'morning').length;
     const evening = selectedSlots.filter(s => s.rateType === 'evening').length;
     const total = selectedSlots.reduce((t, s) => t + s.rate, 0);
-    totalEl.textContent = `₱${total}`;
-    breakdownEl.textContent = [
+    if (totalEl) totalEl.textContent = `₱${total}`;
+    if (breakdownEl) breakdownEl.textContent = [
       morning ? `${morning} morning = ₱${morning * RATES.MORNING}` : '',
       evening ? `${evening} evening = ₱${evening * RATES.EVENING}` : ''
     ].filter(Boolean).join(' + ');
@@ -229,7 +336,8 @@ document.addEventListener('DOMContentLoaded', () => {
         updateQuickButtons();
       });
     });
-    document.getElementById('clearSelectionBtn')?.addEventListener('click', ()=>{
+    const clearBtn = document.getElementById('clearSelectionBtn');
+    if (clearBtn) clearBtn.addEventListener('click', ()=>{
       clearSelection(); activeQuickSelect = null; updateQuickButtons();
     });
   }
@@ -245,7 +353,8 @@ document.addEventListener('DOMContentLoaded', () => {
     selectedSlots = [];
     document.querySelectorAll('.time-slot-card.selected').forEach(c=>c.classList.remove('selected'));
     updateSummary();
-    document.getElementById('proceedToReservation').disabled = true;
+    const proceedBtn = document.getElementById('proceedToReservation');
+    if (proceedBtn) proceedBtn.disabled = true;
   }
 
   function selectRange(start,end) {
@@ -266,10 +375,11 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
     updateSummary();
-    document.getElementById('proceedToReservation').disabled = selectedSlots.length === 0;
+    const proceedBtn = document.getElementById('proceedToReservation');
+    if (proceedBtn) proceedBtn.disabled = selectedSlots.length === 0;
   }
 
-  document.getElementById('proceedToReservation').addEventListener('click', ()=>{
+  document.getElementById('proceedToReservation')?.addEventListener('click', ()=>{
     const dateObj = new Date(selectedDate);
     document.getElementById('reservationDateDisplay').textContent =
       dateObj.toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
@@ -293,7 +403,7 @@ document.addEventListener('DOMContentLoaded', () => {
     reservationModal.show();
   });
 
-  document.getElementById('submitReservation').addEventListener('click', async ()=>{
+  document.getElementById('submitReservation')?.addEventListener('click', async ()=>{
     const form = document.getElementById('reservationForm');
     if (!form.checkValidity()) { form.reportValidity(); return; }
 

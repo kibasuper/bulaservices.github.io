@@ -54,7 +54,7 @@
 </main>
 
 <!-- Review Modal -->
-<div id="reviewModal" class="modal"></div>
+<div id="reviewModal" class="modal-overlay"></div>
 
 <!-- Confirm Rejection Modal -->
 <div id="confirmRejectModal" class="modal">
