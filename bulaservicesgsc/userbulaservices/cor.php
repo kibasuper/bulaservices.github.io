@@ -197,7 +197,7 @@ try {
             <div class="processing-info">
               <h4><i class="fas fa-clock"></i> Processing Information</h4>
               <p><strong>Processing Time:</strong> 3–5 business days</p>
-              <p>You will receive an SMS/e-mail notification once your certificate is ready for pickup.</p>
+              <p>You will receive an e-mail notification once your certificate is ready for pickup.</p>
               <p class="note">Note: Processing may take longer during peak periods.</p>
             </div>
 

@@ -253,19 +253,44 @@ async function injectPricesIntoBadges() {
   }
 }
 
-/* ------- Logout confirm wiring (uses existing CSS in file) ------- */
-function confirmLogout(e){
-  e.preventDefault();
-  const overlay = document.getElementById('logoutDialog');
-  if (!overlay) return (window.location.href = 'logout.php'); // fallback
-  overlay.style.display = 'flex';
+// Logout confirmation dialog (same as track.php)
+window.confirmLogout = function(event) {
+    event.preventDefault();
+    
+    // Create dialog
+    const dialog = document.createElement('div');
+    dialog.className = 'logout-dialog';
+    dialog.innerHTML = `
+        <div class="logout-dialog-content">
+            <div class="logout-dialog-icon">
+                <i class="fas fa-sign-out-alt"></i>
+            </div>
+            <h3>Confirm Logout</h3>
+            <p>Are you sure you want to log out of your account?</p>
+            <div class="logout-dialog-buttons">
+                <button class="logout-dialog-btn logout-dialog-btn-cancel">Cancel</button>
+                <button class="logout-dialog-btn logout-dialog-btn-confirm">Log Out</button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(dialog);
+    
+    // Button handlers
+    dialog.querySelector('.logout-dialog-btn-cancel').addEventListener('click', function() {
+        document.body.removeChild(dialog);
+    });
+    
+    dialog.querySelector('.logout-dialog-btn-confirm').addEventListener('click', function() {
+        window.location.href = 'logout.php';
+    });
+    
+    // Close on backdrop click
+    dialog.addEventListener('click', function(e) {
+        if (e.target === dialog) {
+            document.body.removeChild(dialog);
+        }
+    });
+};
 
-  const cleanup = () => { overlay.style.display = 'none'; document.removeEventListener('keydown', esc); };
-  const esc = (ev) => { if (ev.key === 'Escape') cleanup(); };
 
-  document.getElementById('logoutCancelBtn')?.addEventListener('click', cleanup, { once: true });
-  document.getElementById('logoutConfirmBtn')?.addEventListener('click', () => { window.location.href = 'logout.php'; }, { once: true });
-  overlay.addEventListener('click', (ev) => { if (ev.target === overlay) cleanup(); }, { once: true });
-  document.addEventListener('keydown', esc);
-}
-window.confirmLogout = confirmLogout;

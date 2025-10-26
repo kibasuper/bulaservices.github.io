@@ -5,6 +5,19 @@
  */
 declare(strict_types=1);
 
+if (!function_exists('userUrl')) {
+    function userUrl(string $path = ''): string {
+        return site_url('userbulaservices/' . ltrim($path, '/'));
+    }
+}
+
+if (!function_exists('adminUrl')) {
+    function adminUrl(string $path = ''): string {
+        return site_url('adminbulaservices/' . ltrim($path, '/'));
+    }
+}
+
+
 /* ----------------------------------------------------------------
    1) CANONICAL SESSION (DO THIS FIRST — BEFORE ANY OUTPUT)
    - Use one cookie name only: BULA_SESSID

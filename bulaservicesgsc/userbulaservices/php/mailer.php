@@ -4,107 +4,22 @@ declare(strict_types=1);
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
 
-require_once __DIR__ . '/../server/config.php';   // your DB/auth helpers, sessions, etc.
-require __DIR__ . '/../vendor/autoload.php';      // PHPMailer
+require __DIR__ . '/../vendor/autoload.php';
 
-/**
- * ============================
- * SMTP2GO CONFIG (edit below)
- * ============================
- *
- * Get these from your SMTP2GO dashboard:
- *  - SMTP username & password (Sending → SMTP Users)
- *  - Verified sender address (Reports box shows “Add a verified sender” ✔)
- *
- * Recommended transport: STARTTLS on port 587 or 2525
- * SSL is available on 465, 8465, 443 if your host blocks 587/2525.
- */
+/* ---------- SMTP CONFIG ---------- */
 const SMTP2GO_HOST   = 'mail.smtp2go.com';
-const SMTP2GO_PORT   = 587;                     // or 2525 / 8025 / 80 / 25
-const SMTP2GO_SECURE = 'tls';                   // 'tls' for STARTTLS, or 'ssl' if using 465
-const SMTP2GO_USER   = 'bulaservices'; // <-- change this
-const SMTP2GO_PASS   = '0sD4xBFIgtC32OOp'; // <-- change this
+const SMTP2GO_PORT   = 2525;  // safer port, less likely blocked
+const SMTP2GO_SECURE = 'tls';
+const SMTP2GO_USER   = 'bulaservices';
+const SMTP2GO_PASS   = '0sD4xBFIgtC32OOp';
 
-// Use an address you verified in SMTP2GO (can be your Gmail or a domain mailbox)
-const MAIL_FROM_EMAIL    = 'no-reply@bulaservicesgsc.com'; // <-- change this
+const MAIL_FROM_EMAIL    = 'no-reply@bulaservicesgsc.com';
 const MAIL_FROM_NAME     = 'Barangay Bula Online Services';
-const MAIL_REPLYTO_EMAIL = 'no-reply@bulaservicesgsc.com'; // optional, usually same as FROM
+const MAIL_REPLYTO_EMAIL = 'no-reply@bulaservicesgsc.com';
 const MAIL_REPLYTO_NAME  = 'Barangay Bula Support';
 
-/**
- * Send the verification link.
- *
- * @param string $toEmail      Recipient email
- * @param string $displayName  Recipient display name (optional)
- * @param string $token        Raw verification token (NOT hashed)
- * @return array               ['ok'=>bool, 'error'?:string]
- */
-function sendVerificationLink(string $toEmail, string $displayName, string $token): array
-{
-    $verifyUrl = 'https://bulaservicesgsc.com/php/verify.php?token=' . urlencode($token);
-
-
-    $mail = new PHPMailer(true);
-    try {
-        // Transport
-        $mail->isSMTP();
-        $mail->Host       = SMTP2GO_HOST;
-        $mail->SMTPAuth   = true;
-        $mail->Username   = SMTP2GO_USER;
-        $mail->Password   = SMTP2GO_PASS;
-
-        if (strtolower(SMTP2GO_SECURE) === 'ssl') {
-            $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;     // port 465, 8465, 443
-        } else {
-            $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;  // port 587, 2525, 8025, 80, 25
-        }
-        $mail->Port = (int) SMTP2GO_PORT;
-
-        // From / Reply-To / To
-        $mail->setFrom(MAIL_FROM_EMAIL, MAIL_FROM_NAME);
-        if (MAIL_REPLYTO_EMAIL) {
-            $mail->addReplyTo(MAIL_REPLYTO_EMAIL, MAIL_REPLYTO_NAME ?: MAIL_FROM_NAME);
-        }
-        $mail->addAddress($toEmail, $displayName ?: '');
-
-        // Optional headers (nice to have)
-        $mail->MessageID = sprintf('<%s@bulaservicesgsc.com>', bin2hex(random_bytes(8)));
-        $mail->addCustomHeader('Auto-Submitted', 'auto-generated');
-
-        // Content
-        $safeName = htmlspecialchars($displayName ?: 'there', ENT_QUOTES, 'UTF-8');
-        $mail->isHTML(true);
-        $mail->Subject = 'Verify your email';
-        $mail->Body = "
-          <div style='font-family:Arial,sans-serif;font-size:14px;line-height:1.55'>
-            <p>Hi {$safeName},</p>
-            <p>Welcome to Barangay Bula Online Services. Please verify your email address:</p>
-            <p>
-              <a href='{$verifyUrl}' style='display:inline-block;background:#2563eb;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none'>
-                Verify Email
-              </a>
-            </p>
-            <p>If the button doesn’t work, copy this link into your browser:<br>
-              <span style='word-break:break-all'>{$verifyUrl}</span>
-            </p>
-            <p style='color:#6b7280'>This link expires in 30 minutes. If you didn’t create an account, please ignore this email.</p>
-          </div>";
-        $mail->AltBody = "Hi {$safeName},\n\nVerify your email:\n{$verifyUrl}\n\nThis link expires in 30 minutes.";
-
-        $mail->send();
-        return ['ok' => true];
-    } catch (Exception $e) {
-        // $mail->SMTPDebug = 2; // uncomment for verbose SMTP logs (dev only)
-        $err = $mail->ErrorInfo ?: $e->getMessage();
-        error_log('MAIL ERROR: ' . $err);
-        return ['ok' => false, 'error' => $err];
-    }
-}
-
-function sendPasswordResetLink(string $toEmail, string $displayName, string $token): array
-{
-    $resetUrl = 'https://bulaservicesgsc.com/php/reset_password.php?token=' . urlencode($token);
-
+/* ---------- GENERIC EMAIL ---------- */
+function sendEmailGeneric(string $toEmail, string $displayName, string $subject, string $html, string $alt=''): array {
     $mail = new PHPMailer(true);
     try {
         $mail->isSMTP();
@@ -115,36 +30,70 @@ function sendPasswordResetLink(string $toEmail, string $displayName, string $tok
         $mail->SMTPSecure = (strtolower(SMTP2GO_SECURE) === 'ssl')
             ? PHPMailer::ENCRYPTION_SMTPS
             : PHPMailer::ENCRYPTION_STARTTLS;
-        $mail->Port = (int) SMTP2GO_PORT;
+        $mail->Port       = (int)SMTP2GO_PORT;
 
         $mail->setFrom(MAIL_FROM_EMAIL, MAIL_FROM_NAME);
         if (MAIL_REPLYTO_EMAIL) $mail->addReplyTo(MAIL_REPLYTO_EMAIL, MAIL_REPLYTO_NAME ?: MAIL_FROM_NAME);
         $mail->addAddress($toEmail, $displayName ?: '');
 
-        $safeName = htmlspecialchars($displayName ?: 'there', ENT_QUOTES, 'UTF-8');
         $mail->isHTML(true);
-        $mail->Subject = 'Reset your password';
-        $mail->Body = "
-          <div style='font-family:Arial,sans-serif;font-size:14px;line-height:1.55'>
-            <p>Hi {$safeName},</p>
-            <p>We received a request to reset your password. Click below to choose a new one:</p>
-            <p>
-              <a href='{$resetUrl}' style='display:inline-block;background:#2563eb;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none'>
-                Reset Password
-              </a>
-            </p>
-            <p>If the button doesn’t work, copy this link into your browser:<br>
-              <span style='word-break:break-all'>{$resetUrl}</span>
-            </p>
-            <p style='color:#6b7280'>This link expires in 30 minutes. If you didn’t request this, you can ignore this email.</p>
-          </div>";
-        $mail->AltBody = "Hi {$safeName},\n\nReset your password:\n{$resetUrl}\n\nThis link expires in 30 minutes.";
+        $mail->Subject = $subject;
+        $mail->Body    = $html;
+        $mail->AltBody = $alt ?: strip_tags($html);
 
         $mail->send();
-        return ['ok' => true];
+        return ['ok'=>true];
     } catch (Exception $e) {
         $err = $mail->ErrorInfo ?: $e->getMessage();
-        error_log('MAIL ERROR (reset): ' . $err);
-        return ['ok' => false, 'error' => $err];
+        error_log('MAIL ERROR: ' . $err);
+        return ['ok'=>false,'error'=>$err];
     }
+}
+
+/* ---------- VERIFICATION EMAIL ---------- */
+function sendVerificationLink(string $toEmail, string $displayName, string $token): array {
+    $verifyUrl = 'https://bulaservicesgsc.com/php/verify.php?token=' . urlencode($token);
+    $safeName = htmlspecialchars($displayName ?: 'there', ENT_QUOTES, 'UTF-8');
+
+    $html = "
+      <div style='font-family:Arial,sans-serif;font-size:14px;line-height:1.55'>
+        <p>Hi {$safeName},</p>
+        <p>Welcome to Barangay Bula Online Services. Please verify your email address:</p>
+        <p>
+          <a href='{$verifyUrl}' style='display:inline-block;background:#2563eb;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none'>
+            Verify Email
+          </a>
+        </p>
+        <p>If the button doesn’t work, copy this link:<br>
+          <span style='word-break:break-all'>{$verifyUrl}</span>
+        </p>
+        <p style='color:#6b7280'>This link expires in 30 minutes.</p>
+      </div>";
+    $alt = "Hi {$safeName},\n\nVerify your email:\n{$verifyUrl}\n\nThis link expires in 30 minutes.";
+
+    return sendEmailGeneric($toEmail, $displayName, 'Verify your email', $html, $alt);
+}
+
+/* ---------- RESET PASSWORD EMAIL ---------- */
+function sendPasswordResetLink(string $toEmail, string $displayName, string $token): array {
+    $resetUrl = 'https://bulaservicesgsc.com/php/reset_password.php?token=' . urlencode($token);
+    $safeName = htmlspecialchars($displayName ?: 'there', ENT_QUOTES, 'UTF-8');
+
+    $html = "
+      <div style='font-family:Arial,sans-serif;font-size:14px;line-height:1.55'>
+        <p>Hi {$safeName},</p>
+        <p>We received a request to reset your password. Click below to choose a new one:</p>
+        <p>
+          <a href='{$resetUrl}' style='display:inline-block;background:#2563eb;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none'>
+            Reset Password
+          </a>
+        </p>
+        <p>If the button doesn’t work, copy this link:<br>
+          <span style='word-break:break-all'>{$resetUrl}</span>
+        </p>
+        <p style='color:#6b7280'>This link expires in 30 minutes.</p>
+      </div>";
+    $alt = "Hi {$safeName},\n\nReset your password:\n{$resetUrl}\n\nThis link expires in 30 minutes.";
+
+    return sendEmailGeneric($toEmail, $displayName, 'Reset your password', $html, $alt);
 }

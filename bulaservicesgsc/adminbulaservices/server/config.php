@@ -7,12 +7,31 @@
 
 declare(strict_types=1);
 
+if (!function_exists('userUrl')) {
+    function userUrl(string $path = ''): string {
+        return site_url('userbulaservices/' . ltrim($path, '/'));
+    }
+}
+
+if (!function_exists('adminUrl')) {
+    function adminUrl(string $path = ''): string {
+        return site_url('adminbulaservices/' . ltrim($path, '/'));
+    }
+}
+
+
 // ---------------- Session Handling ----------------
 // Use a unique session name for admin panel
-session_name('ADMIN_BULA_SESSID');
-
-if (session_status() === PHP_SESSION_NONE) {
+if (session_status() !== PHP_SESSION_ACTIVE) {
+    session_name('ADMIN_BULA_SESSID');
     session_start();
+} else {
+    // If already active, verify it’s the correct one
+    if (session_name() !== 'ADMIN_BULA_SESSID') {
+        session_write_close();
+        session_name('ADMIN_BULA_SESSID');
+        session_start();
+    }
 }
 
 // ---------------- Error Reporting ----------------

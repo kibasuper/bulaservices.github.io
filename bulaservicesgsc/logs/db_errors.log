@@ -200,3 +200,7 @@
 [26-Oct-2025 08:43:13 Etc/UTC] home.php profile fetch: Call to undefined function user_upload_url()
 [26-Oct-2025 08:43:22 Etc/UTC] home.php profile fetch: Call to undefined function user_upload_url()
 [26-Oct-2025 08:49:09 Etc/UTC] home.php profile fetch: Call to undefined function user_upload_url()
+[26-Oct-2025 13:52:50 Etc/UTC] PHP Fatal error:  Cannot redeclare adminUrl() (previously declared in /var/www/bulaservices/data/www/bulaservicesgsc.com/bulaservicesgsc/adminbulaservices/server/config.php:147) in /var/www/bulaservices/data/www/bulaservicesgsc.com/bulaservicesgsc/userbulaservices/server/config.php on line 157
+[26-Oct-2025 13:58:30 Etc/UTC] PHP Fatal error:  Cannot redeclare adminUrl() (previously declared in /var/www/bulaservices/data/www/bulaservicesgsc.com/bulaservicesgsc/adminbulaservices/server/config.php:147) in /var/www/bulaservices/data/www/bulaservicesgsc.com/bulaservicesgsc/userbulaservices/server/config.php on line 157
+[26-Oct-2025 14:39:56 Etc/UTC] verify.php: token exists but already consumed id=39
+[26-Oct-2025 14:39:56 Etc/UTC] verify.php: token exists but already consumed id=39
