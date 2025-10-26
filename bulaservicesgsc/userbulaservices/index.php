@@ -2,6 +2,49 @@
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
+$BASE = __DIR__;
+
+// 1) Always load config first (sessions, headers, DB, etc.)
+$cfg = $BASE . '/server/config.php';
+if (!is_file($cfg)) {
+    http_response_code(500);
+    echo 'Fatal: missing config.php at ' . htmlspecialchars($cfg);
+    exit;
+}
+require_once $cfg;
+
+// 2) Pull in auth_functions.php (try both locations)
+$authPaths = [
+    $BASE . '/server/auth_functions.php', 
+    dirname(__DIR__) . '/server/auth_functions.php',
+];
+$authLoaded = false;
+foreach ($authPaths as $p) {
+    if (is_file($p) && is_readable($p)) {
+        require_once $p;
+        $authLoaded = true;
+        break;
+    }
+}
+
+// 3) Last-resort: provide a CSRF shim so the page never 500s
+if (!function_exists('generateCsrfToken')) {
+    function generateCsrfToken(): string {
+        if (session_status() !== PHP_SESSION_ACTIVE) { session_start(); }
+        if (empty($_SESSION['csrf_token'])) {
+            $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+        }
+        return $_SESSION['csrf_token'];
+    }
+}
+if (!function_exists('validateCsrfToken')) {
+    function validateCsrfToken(string $token): bool {
+        return isset($_SESSION['csrf_token']) && hash_equals($_SESSION['csrf_token'], $token);
+    }
+}
+
+// 4) Create the page token
+$CSRF = generateCsrfToken();
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -66,8 +109,10 @@ function showError(message, details='') {
         </div>
 
         <button type="submit" class="btn">Login</button>
+        <p><a href="#" id="forgotLink">Forgot password?</a></p>
       </form>
     </div>
+    
 
     <!-- REGISTER TAB -->
     <div class="tab-content" id="register">
@@ -317,6 +362,30 @@ function showError(message, details='') {
     </div>
   </div>
 </div>
+
+<!-- Forgot Password Modal (overlay) -->
+<div id="forgotModal" class="forgot-modal" aria-hidden="true">
+  <div class="forgot-card" role="dialog" aria-modal="true" aria-labelledby="forgotTitle">
+    <h3 id="forgotTitle">Reset your password</h3>
+    <p class="muted">Enter your account email and we’ll send you a reset link.</p>
+
+    <form id="forgotForm" method="POST" novalidate>
+      <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($CSRF,ENT_QUOTES) ?>">
+      <div class="form-group">
+        <label for="forgotEmail">Email</label>
+        <input type="email" id="forgotEmail" name="email" class="form-control">
+      </div>
+
+      <div class="forgot-actions">
+        <button type="button" class="btn btn-outline" id="forgotCancel">Cancel</button>
+        <button type="submit" class="btn btn-primary">Send reset link</button>
+      </div>
+
+      <div id="forgotStatus" class="form-note" style="margin-top:.5rem"></div>
+    </form>
+  </div>
+</div>
+
 
 <!-- Terms Modal -->
 <div id="tosModal" class="tos-modal" aria-hidden="true">

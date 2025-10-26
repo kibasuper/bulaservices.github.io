@@ -6,9 +6,10 @@ require_once __DIR__ . '/server/file_urls.php';
 
 ensureUserAccess();
 
-ini_set('display_errors', '1');
-ini_set('display_startup_errors', '1');
-error_reporting(E_ALL);
+// (Leave verbose error_mode to your preference)
+// ini_set('display_errors', '1');
+// ini_set('display_startup_errors', '1');
+// error_reporting(E_ALL);
 
 // Current user (safe defaults)
 $currentUser = [
@@ -64,9 +65,6 @@ $picUrl = $currentUser['profilePic'] ?: './pics/profile-placeholder.jpg';
             <li><a href="#about">About</a></li>
             <li class="profile-dropdown">
                 <button class="profile-btn">
-                    <?php
-                      $picSrc = $currentUser['profilePic'] ?: './pics/profile-placeholder.jpg';
-                    ?>
                     <img src="<?= htmlspecialchars($picUrl, ENT_QUOTES) ?>" alt="Profile" class="profile-pic">
                     <span class="user-name"><?= htmlspecialchars((string)$currentUser['name'], ENT_QUOTES) ?></span>
                 </button>
@@ -102,132 +100,164 @@ $picUrl = $currentUser['profilePic'] ?: './pics/profile-placeholder.jpg';
         </div>
     </section>
 
-    <!-- Announcements Carousel (built by home.js; hidden if no items) -->
+    <!-- Announcements Carousel (hydrated by home.js) -->
     <section class="carousel" id="annCarousel" aria-label="Barangay announcements" style="display:none;">
       <div class="carousel-inner">
         <div class="carousel-images"></div>
         <button class="prev" aria-label="Previous slide"><i class="fas fa-chevron-left"></i></button>
         <button class="next" aria-label="Next slide"><i class="fas fa-chevron-right"></i></button>
+        <!-- subtle overlay so controls are legible on any background -->
+        <div class="carousel-overlay"></div>
       </div>
       <div class="carousel-dots"></div>
     </section>
 
-    <!-- Services Section -->
+
+        <!-- Services Section -->
     <section class="services" id="services">
-        <h3 class="section-subtitle">Primary Documents</h3>
+    <h3 class="section-subtitle">Primary Documents</h3>
+    <div class="services-grid">
+        <div class="service-card">
+        <div class="service-icon">
+            <i class="fas fa-file-alt"></i>
+            <!-- NEW -->
+            <span class="price-badge" data-price-key="bc" aria-label="Barangay Clearance price">₱—</span>
+        </div>
+        <div class="service-content">
+            <h3>Barangay Clearance</h3>
+            <p>Official document certifying residency and good standing in the barangay</p>
+            <a href="bc.php" class="service-link">Request Now</a>
+        </div>
+        </div>
+
+        <div class="service-card">
+        <div class="service-icon">
+            <i class="fas fa-briefcase"></i>
+            <!-- NEW -->
+            <span class="price-badge" data-price-key="bp" aria-label="Business Clearance price">₱—</span>
+        </div>
+        <div class="service-content">
+            <h3>Business Clearance</h3>
+            <p>Required document for operating businesses within the barangay</p>
+            <a href="bp.php" class="service-link">Request Now</a>
+        </div>
+        </div>
+
+        <div class="service-card">
+        <div class="service-icon">
+            <i class="fas fa-id-card"></i>
+            <!-- NEW -->
+            <span class="price-badge" data-price-key="cedula" aria-label="Cedula price">₱—</span>
+        </div>
+        <div class="service-content">
+            <h3>Community Tax Certificate (Cedula)</h3>
+            <p>Proof of payment of community tax for various transactions</p>
+            <a href="cedula.php" class="service-link">Request Now</a>
+        </div>
+        </div>
+
+        <div class="service-card">
+        <div class="service-icon">
+            <i class="fas fa-file-signature"></i>
+            <!-- NEW -->
+            <span class="price-badge" data-price-key="ivs" aria-label="IVS price">₱—</span>
+        </div>
+        <div class="service-content">
+            <h3>Individual Voluntary Statement</h3>
+            <p>Official sworn statement for various legal purposes</p>
+            <a href="ivs.php" class="service-link">Request Now</a>
+        </div>
+        </div>
+    </div>
+
+    <h3 class="section-subtitle" style="margin-top: 3rem;">Additional Certificates</h3>
+    <div class="services-grid">
+        <div class="service-card">
+        <div class="service-icon">
+            <i class="fas fa-hands-helping"></i>
+            <!-- NEW -->
+            <span class="price-badge" data-price-key="indigency" aria-label="Indigency price">₱—</span>
+        </div>
+        <div class="service-content">
+            <h3>Certificate of Indigency</h3>
+            <p>Document certifying financial status for availing government assistance</p>
+            <a href="coi.php" class="service-link">Request Now</a>
+        </div>
+        </div>
+
+        <div class="service-card">
+        <div class="service-icon">
+            <i class="fas fa-home"></i>
+            <!-- NEW -->
+            <span class="price-badge" data-price-key="residency" aria-label="Residency price">₱—</span>
+        </div>
+        <div class="service-content">
+            <h3>Certificate of Residency</h3>
+            <p>Proof of residence within the barangay jurisdiction</p>
+            <a href="cor.php" class="service-link">Request Now</a>
+        </div>
+        </div>
+
+        <div class="service-card">
+        <div class="service-icon">
+            <i class="fas fa-money-bill-wave"></i>
+            <!-- NEW -->
+            <span class="price-badge" data-price-key="lic" aria-label="Low Income Cert price">₱—</span>
+        </div>
+        <div class="service-content">
+            <h3>Low Income Certificate</h3>
+            <p>Certification of income level for social welfare programs</p>
+            <a href="lic.php" class="service-link">Request Now</a>
+        </div>
+        </div>
+
+        <div class="service-card">
+        <div class="service-icon">
+            <i class="fas fa-file-invoice-dollar"></i>
+            <!-- NEW -->
+            <span class="price-badge" data-price-key="pic" aria-label="Proof of Income Cert price">₱—</span>
+        </div>
+        <div class="service-content">
+            <h3>Proof of Income Certificate</h3>
+            <p>Official document verifying income for loan and other applications</p>
+            <a href="pic.php" class="service-link">Request Now</a>
+        </div>
+        </div>
+    </div>
+
+    <!-- Facility Services Section -->
+    <div class="facility-services">
+        <h3 class="section-subtitle">Facility Services</h3>
         <div class="services-grid">
             <div class="service-card">
                 <div class="service-icon">
-                    <i class="fas fa-file-alt"></i>
+                <i class="fas fa-clipboard-list"></i>
+                <!-- dashboard has no price -->
                 </div>
                 <div class="service-content">
-                    <h3>Barangay Clearance</h3>
-                    <p>Official document certifying residency and good standing in the barangay</p>
-                    <a href="bc.php" class="service-link">Request Now</a>
+                <h3>My Requests Dashboard</h3>
+                <p>View all your submitted requests and check their current status</p>
+                <a href="track.php" class="service-link">View My Requests</a>
                 </div>
             </div>
-            <div class="service-card">
-                <div class="service-icon">
-                    <i class="fas fa-briefcase"></i>
-                </div>
-                <div class="service-content">
-                    <h3>Business Clearance</h3>
-                    <p>Required document for operating businesses within the barangay</p>
-                    <a href="bp.php" class="service-link">Request Now</a>
-                </div>
-            </div>
-            <div class="service-card">
-                <div class="service-icon">
-                    <i class="fas fa-id-card"></i>
-                </div>
-                <div class="service-content">
-                    <h3>Community Tax Certificate (Cedula)</h3>
-                    <p>Proof of payment of community tax for various transactions</p>
-                    <a href="cedula.php" class="service-link">Request Now</a>
-                </div>
-            </div>
-            <div class="service-card">
-                <div class="service-icon">
-                    <i class="fas fa-file-signature"></i>
-                </div>
-                <div class="service-content">
-                    <h3>Individual Voluntary Statement</h3>
-                    <p>Official sworn statement for various legal purposes</p>
-                    <a href="ivs.php" class="service-link">Request Now</a>
-                </div>
-            </div>
-        </div>
 
-        <h3 class="section-subtitle" style="margin-top: 3rem;">Additional Certificates</h3>
-        <div class="services-grid">
             <div class="service-card">
                 <div class="service-icon">
-                    <i class="fas fa-hands-helping"></i>
+                    <i class="fas fa-warehouse"></i>
+                    <!-- NEW stacked badges with time ranges -->
+                    <div class="price-badge-stack">
+                        <span class="price-badge" data-price-key="gym_morning">₱—</span>
+                        <span class="price-badge" data-price-key="gym_evening">₱—</span>
+                    </div>
                 </div>
                 <div class="service-content">
-                    <h3>Certificate of Indigency</h3>
-                    <p>Document certifying financial status for availing government assistance</p>
-                    <a href="coi.php" class="service-link">Request Now</a>
-                </div>
-            </div>
-            <div class="service-card">
-                <div class="service-icon">
-                    <i class="fas fa-home"></i>
-                </div>
-                <div class="service-content">
-                    <h3>Certificate of Residency</h3>
-                    <p>Proof of residence within the barangay jurisdiction</p>
-                    <a href="cor.php" class="service-link">Request Now</a>
-                </div>
-            </div>
-            <div class="service-card">
-                <div class="service-icon">
-                    <i class="fas fa-money-bill-wave"></i>
-                </div>
-                <div class="service-content">
-                    <h3>Low Income Certificate</h3>
-                    <p>Certification of income level for social welfare programs</p>
-                    <a href="lic.php" class="service-link">Request Now</a>
-                </div>
-            </div>
-            <div class="service-card">
-                <div class="service-icon">
-                    <i class="fas fa-file-invoice-dollar"></i>
-                </div>
-                <div class="service-content">
-                    <h3>Proof of Income Certificate</h3>
-                    <p>Official document verifying income for loan and other applications</p>
-                    <a href="pic.php" class="service-link">Request Now</a>
+                    <h3>Gym Reservation</h3>
+                    <p>Book our barangay gym facilities for your events or workouts</p>
+                    <a href="gym.php" class="service-link">Reserve Now</a>
                 </div>
             </div>
         </div>
-
-        <!-- Facility Services Section -->
-        <div class="facility-services">
-            <h3 class="section-subtitle">Facility Services</h3>
-            <div class="services-grid">
-                <div class="service-card">
-                    <div class="service-icon">
-                        <i class="fas fa-clipboard-list"></i>
-                    </div>
-                    <div class="service-content">
-                        <h3>My Requests Dashboard</h3>
-                        <p>View all your submitted requests and check their current status</p>
-                        <a href="track.php" class="service-link">View My Requests</a>
-                    </div>
-                </div>
-                <div class="service-card">
-                    <div class="service-icon">
-                        <i class="fas fa-warehouse"></i>
-                    </div>
-                    <div class="service-content">
-                        <h3>Gym Reservation</h3>
-                        <p>Book our barangay gym facilities for your events or workouts</p>
-                        <a href="gym.php" class="service-link">Reserve Now</a>
-                    </div>
-                </div>
-            </div>
-        </div>
+    </div>
     </section>
 
     <section class="about" id="about" style="background-color: #ffffff; padding: 4rem 1rem;"></section>

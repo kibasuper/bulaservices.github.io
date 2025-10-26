@@ -56,22 +56,19 @@ define('PUBLIC_BASE_URL',  'https://bulaservicesgsc.com');                      
 // ---------------- Security Headers ----------------
 header(
     "Content-Security-Policy: " .
-    // base
     "default-src 'self'; " .
-    // scripts & styles 
     "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; " .
     "style-src  'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com https://cdn.jsdelivr.net; " .
-    // NEW: allow XHR/fetch/devtools source-map fetches to CDNs
     "connect-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://fonts.googleapis.com https://fonts.gstatic.com; " .
-    // fonts/images allowed
     "font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com data:; " .
-    "img-src  'self' data: blob:; " .
-    // optional (safe to keep)
+    
+    "img-src  'self' data: blob: https://ui-avatars.com https://bulaservicesgsc.com https://admin.bulaservicesgsc.com; " .
     "object-src 'none'; " .
     "frame-src 'self'; " .
     "child-src 'self'; " .
-    "media-src 'self' data: blob:;" 
+    "media-src 'self' data: blob:;"
 );
+
 
 
 header("X-Frame-Options: DENY");
@@ -169,3 +166,13 @@ function isAjaxRequest(): bool {
 }
 
 
+// ---- Project paths (so all scripts agree on where /uploads lives) ----
+if (!defined('PROJECT_ROOT')) {
+    // config.php is .../bulaservicesgsc.com/bulaservicesgsc/userbulaservices/server/config.php
+    // -> dirname(__DIR__) = .../userbulaservices
+    // -> dirname(dirname(__DIR__)) = .../bulaservicesgsc   (this folder contains /uploads)
+    define('PROJECT_ROOT', dirname(dirname(__DIR__)));
+}
+if (!defined('UPLOADS_DIR')) {
+    define('UPLOADS_DIR', PROJECT_ROOT . '/uploads');  // /var/www/.../bulaservicesgsc/uploads
+}

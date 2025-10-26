@@ -1,10 +1,10 @@
 <?php
 require_once __DIR__ . '/server/config.php';
+require_once __DIR__ . '/server/file_urls.php';
 if (empty($_SESSION['admin_id'])) {
   header('Location: index.php');
   exit;
 }
-
 if ($_SESSION['admin_role'] !== 'superadmin') {
     header('Location: admin.php?denied=1');
     exit;
@@ -21,19 +21,19 @@ if ($_SESSION['admin_role'] !== 'superadmin') {
 </head>
 <body>
 
-  <!-- NEW top header (your requested header) -->
+  <!-- Header -->
   <header class="app-header">
     <div class="container header-content">
-      <h1><i class="fas fa-users-cog"></i> Officials Management</h1>
+      <h1><i class="fas fa-users-cog"></i> Resident Management</h1>
       <div class="header-actions">
         <a href="admin.php" class="dashboard-link"><i class="fas fa-arrow-left"></i> Dashboard</a>
       </div>
     </div>
   </header>
 
-  <!-- ORIGINAL page header moved BELOW -->
+  <!-- Page actions -->
   <header class="page-header">
-    <h1><i class="fa-solid fa-users"></i> Resident Management</h1>
+    <h1><i class="fa-solid fa-users"></i> Residents</h1>
     <div class="actions">
       <button id="btnAddResident" class="btn primary">
         <i class="fa-solid fa-user-plus"></i> Add Resident
@@ -75,7 +75,7 @@ if ($_SESSION['admin_role'] !== 'superadmin') {
 
       <label class="search">
         <i class="fa-solid fa-magnifying-glass"></i>
-        <input id="searchBox" type="text" placeholder="Search name, email, address…" />
+        <input id="searchBox" type="text" placeholder="Search name, email…" />
       </label>
     </div>
 
@@ -84,22 +84,29 @@ if ($_SESSION['admin_role'] !== 'superadmin') {
     </div>
   </section>
 
-  <main class="table-wrap">
+      <main class="table-wrap">
     <table class="grid">
+      <colgroup>
+        <col style="width:64px;">   <!-- Photo -->
+        <col style="width:36%;">    <!-- Name -->
+        <col style="width:110px;">  <!-- Gender -->
+        <col style="width:140px;">  <!-- Residency -->
+        <col style="width:110px;">  <!-- Status -->
+        <col style="width:110px;">  <!-- Actions -->
+      </colgroup>
+
       <thead>
         <tr>
-          <th>Profile</th>
+          <th>Photo</th>
           <th>Name</th>
           <th>Gender</th>
-          <th>Birthdate</th>
           <th>Residency</th>
           <th>Status</th>
-          <th>Contact</th>
-          <th>Address</th>
+          <th>Actions</th>
         </tr>
       </thead>
       <tbody id="residentsTbody">
-        <tr><td colspan="8" class="center muted">Loading…</td></tr>
+        <tr><td colspan="6" class="center muted">Loading…</td></tr>
       </tbody>
     </table>
 
@@ -109,6 +116,7 @@ if ($_SESSION['admin_role'] !== 'superadmin') {
       <button id="nextPage" class="btn" disabled>Next <i class="fa-solid fa-angle-right"></i></button>
     </div>
   </main>
+
 
   <!-- View Modal -->
   <div id="viewModal" class="modal" aria-hidden="true">
@@ -128,9 +136,9 @@ if ($_SESSION['admin_role'] !== 'superadmin') {
 
         <div class="grid2">
           <div><span class="label">Gender</span><span id="vGender">—</span></div>
-          <div><span class="label">Birthdate</span><span id="vDob">—</span></div>
-          <div><span class="label">Residency</span><span id="vResidency">—</span></div>
-          <div><span class="label">Contact</span><span id="vContact">—</span></div>
+          <div><span class="label">Age</span><span id="vAge">—</span></div>
+          <div><span class="label">Account Type</span><span id="vResidency">—</span></div>
+          <div><span class="label">Year Started Staying</span><span id="vYearStarted">—</span></div>
           <div class="span2"><span class="label">Address</span><span id="vAddress">—</span></div>
           <div><span class="label">Status</span><span id="vStatus">—</span></div>
           <div><span class="label">Created</span><span id="vCreated">—</span></div>

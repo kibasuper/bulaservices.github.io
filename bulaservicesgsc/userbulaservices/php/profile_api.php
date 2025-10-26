@@ -272,4 +272,52 @@ if ($method==='POST' && $action==='delete_pic') {
     }
 }
 
+/* -------- upload_pic -------- */
+if ($method==='POST' && $action==='upload_pic') {
+    // ... keep as-is ...
+}
+
+/* -------- delete_pic -------- */
+if ($method==='POST' && $action==='delete_pic') {
+    // ... keep as-is ...
+}
+
+/* -------- change_password (POST) -------- */
+if ($method==='POST' && $action==='change_password') {
+    $old = (string)($_POST['old_password'] ?? '');
+    $new = (string)($_POST['new_password'] ?? '');
+    $new2 = (string)($_POST['new_password2'] ?? '');
+
+    if ($old === '' || $new === '' || $new2 === '') {
+        out(422, ['ok'=>false,'error'=>'All password fields are required']);
+    }
+    if ($new !== $new2) {
+        out(422, ['ok'=>false,'error'=>'New passwords do not match']);
+    }
+    if (strlen($new) < 8) {
+        out(422, ['ok'=>false,'error'=>'New password must be at least 8 characters']);
+    }
+    if ($new === $old) {
+        out(422, ['ok'=>false,'error'=>'New password must be different from current password']);
+    }
+    // (optional) complexity hint
+    // if (!preg_match('/[A-Za-z]/', $new) || !preg_match('/\d/', $new)) { ... }
+
+    $st = $db->prepare("SELECT password FROM users WHERE id=:id LIMIT 1");
+    $st->execute([':id'=>$userId]);
+    $row = $st->fetch(PDO::FETCH_ASSOC);
+    if (!$row || !password_verify($old, (string)$row['password'])) {
+        out(403, ['ok'=>false,'error'=>'Incorrect current password']);
+    }
+
+    $hash = password_hash($new, PASSWORD_DEFAULT);
+    $upd  = $db->prepare("UPDATE users SET password=:p, updated_at=CURRENT_TIMESTAMP WHERE id=:id LIMIT 1");
+    $upd->execute([':p'=>$hash, ':id'=>$userId]);
+
+    if (session_status() === PHP_SESSION_ACTIVE) session_regenerate_id(true);
+
+    out(200, ['ok'=>true,'message'=>'Password changed successfully']);
+}
+
+/* -------- fallthrough -------- */
 out(400, ['ok'=>false,'error'=>'Unknown action']);

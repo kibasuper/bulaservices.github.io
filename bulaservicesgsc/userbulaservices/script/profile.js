@@ -1,5 +1,3 @@
-// profile.js — single, clean version with password-confirmed saves
-
 let currentUser = null;
 let pendingSave = null;  // { kind: 'field'|'all', field?:string, payloadBuilder:Function }
 
@@ -15,6 +13,16 @@ document.addEventListener('DOMContentLoaded', () => {
   // Save buttons
   document.getElementById('saveAllBtn').addEventListener('click', onSaveAllClicked);
   document.getElementById('pwConfirmBtn').addEventListener('click', onPwConfirm);
+  document.getElementById('changePwBtn').addEventListener('click', onChangePassword);
+  document.getElementById('changePwClearBtn').addEventListener('click', () => {
+    const ids = ['pwOld','pwNew','pwNew2'];
+    ids.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  });
+
+  ['pwOld','pwNew','pwNew2','pwConfirmInput'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) addPasswordToggle(el);
+  });
 
   // Enter key submits password confirm
   const pwInput = document.getElementById('pwConfirmInput');
@@ -23,6 +31,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (e.key === 'Enter') onPwConfirm();
     });
   }
+  
 });
 
 /* -------------------- helpers -------------------- */
@@ -33,10 +42,68 @@ function setInputValue(id, val){ const el=document.getElementById(id); if(el) el
 
 async function api(url, opts={}) {
   const res = await fetch(url, { credentials:'include', ...opts });
-  const json = await res.json().catch(()=>({ok:false,error:`HTTP ${res.status}`})); // friendlier fallback
+  const json = await res.json().catch(()=>({ok:false,error:`HTTP ${res.status}`})); 
   if (!res.ok || !json.ok) throw new Error(json.error || `HTTP ${res.status}`);
   return json;
 }
+
+//Change pass
+async function onChangePassword(e){
+  e.preventDefault();
+
+  const oldPw = (document.getElementById('pwOld')?.value || '').trim();
+  const newPw = (document.getElementById('pwNew')?.value || '').trim();
+  const newPw2 = (document.getElementById('pwNew2')?.value || '').trim();
+
+  // Client-side checks
+  if (!oldPw)  { showToast('warn','Required','Please enter your current password.'); return; }
+  if (!newPw)  { showToast('warn','Required','Please enter a new password.'); return; }
+  if (newPw.length < 8) { showToast('warn','Too short','New password must be at least 8 characters.'); return; }
+  if (newPw !== newPw2) { showToast('warn','Mismatch','New password entries do not match.'); return; }
+  if (newPw === oldPw)  { showToast('warn','No change','New password must be different from current password.'); return; }
+
+
+  if (!/[A-Za-z]/.test(newPw) || !/\d/.test(newPw)) {
+    showToast('warn','Weak password','Consider using letters and numbers for a stronger password.');
+  }
+
+  const fd = new FormData();
+  fd.append('action','change_password');
+  fd.append('csrf_token', window.CSRF_TOKEN);
+  fd.append('old_password', oldPw);
+  fd.append('new_password', newPw);
+  fd.append('new_password2', newPw2);
+
+  try {
+    await postForm(window.PROFILE_API, fd);
+    showToast('success','Password updated','Your password has been changed.');
+    // Clear fields
+    ['pwOld','pwNew','pwNew2'].forEach(id => { const el=document.getElementById(id); if (el) el.value=''; });
+    // (Optional) Refresh CSRF and user info
+    await initProfile();
+  } catch(err) {
+    showToast('error','Update failed', err.message || 'Please check your current password.');
+    console.error(err);
+  }
+}
+
+
+// --- Purok name map (same list you used on index.php) ---
+const PUROK_NAMES = {
+  "1":"Pearly Shell","2":"Fishermans Village","3":"Rajah Muda","4":"Rajah Muda 4A",
+  "5":"Rajah Muda 4B","6":"Rajah Muda 5","7":"Lagang-Lagang","8":"Zone 1A",
+  "9":"Zone 2B","10":"Zone 2A","11":"Zone 2B","12":"Zone 2C","13":"Zone 3,4,5",
+  "14":"Zone 6","15":"Zone 7","16":"Zone 8","17":"Zone 9","18":"Calsanter",
+  "19":"Sagrada Corazon","20":"Gonzales Subd.","21":"Gensanville Phase 1",
+  "22":"Gensanville Phase 2","23":"Sitio Rapoa","24":"San Pedro","25":"Asai Village"
+};
+
+function getPurokName(n) {
+  if (n == null) return '';
+  const k = String(parseInt(n, 10));
+  return PUROK_NAMES[k] || '';
+}
+
 
 /* ---- Toast / Snackbar helpers ---- */
 function showToast(type, title, message, timeout=4000){
@@ -103,6 +170,22 @@ function hydrateUI(u) {
 
   // Residence
   setText('purokValue', u.purok);
+    (function attachPurokNameTag(){
+      const holder = document.getElementById('purokValue');
+      if (!holder) return;
+
+      // Create the tag once if not present
+      let tag = holder.parentElement.querySelector('.purok-name-tag');
+      if (!tag) {
+        tag = document.createElement('span');
+        tag.className = 'purok-name-tag';
+        holder.after(tag);
+      }
+
+      const name = getPurokName(u.purok);
+      tag.textContent = name ? name : '';
+      tag.style.display = name ? 'inline-block' : 'none';
+    })();
   setText('yearStartedValue', u.year_started_staying);
   setText('contactNumberValue', u.contact_number);
   setText('occupationValue', u.occupation);
@@ -215,8 +298,8 @@ function buildSingleFieldPayload(field) {
     suffix:           ['suffix','suffixInput'],
     birthPlace:       ['birth_place','birthPlaceInput'],
     birthDate:        ['birth_date','birthDateInput'],
-    sex:              ['gender','sexInput'],                 // select
-    civilStatus:      ['civil_status','civilStatusInput'],   // select
+    sex:              ['gender','sexInput'],                
+    civilStatus:      ['civil_status','civilStatusInput'],   
     purok:            ['purok','purokInput'],
     yearStarted:      ['year_started_staying','yearStartedInput'],
     contactNumber:    ['contact_number','contactNumberInput'],
@@ -256,7 +339,6 @@ function buildSaveAllPayload() {
   fd.append('contact_number', getInputVal('contactNumberInput'));
   fd.append('occupation', getInputVal('occupationInput'));
   fd.append('address', getInputVal('addressInput'));
-  // email is read-only (not sent)
 
   return fd;
 }
@@ -289,4 +371,36 @@ async function postForm(url, formData) {
   const json = await res.json().catch(()=>({ok:false,error:`HTTP ${res.status}`})); // friendlier fallback
   if (!res.ok || !json.ok) throw new Error(json.error || `HTTP ${res.status}`);
   return json;
+}
+
+// Show hide pass
+function addPasswordToggle(input) {
+  if (!input || input.dataset.hasToggle === '1') return;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'pw-wrap';
+  input.parentNode.insertBefore(wrap, input);
+  wrap.appendChild(input);
+
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'pw-toggle';
+  btn.setAttribute('aria-label', 'Show password');
+  btn.setAttribute('title', 'Show/Hide');
+  btn.innerHTML = '<i class="fa-regular fa-eye"></i>';
+
+  btn.addEventListener('click', () => {
+    const show = input.type === 'password';
+    input.type = show ? 'text' : 'password';
+    btn.innerHTML = show
+      ? '<i class="fa-regular fa-eye-slash"></i>'
+      : '<i class="fa-regular fa-eye"></i>';
+    btn.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+    input.focus({ preventScroll: true });
+  });
+
+  btn.addEventListener('mousedown', e => e.preventDefault());
+
+  wrap.appendChild(btn);
+  input.dataset.hasToggle = '1';
 }

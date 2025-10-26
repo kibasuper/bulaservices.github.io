@@ -8,13 +8,11 @@ if (session_status() !== PHP_SESSION_ACTIVE) session_start();
 /* ---------- Access control ---------- */
 if (empty($_SESSION['admin_id'])) {
   http_response_code(401);
-  echo json_encode(['ok' => false, 'error' => 'Unauthorized']);
-  exit;
+  echo json_encode(['ok' => false, 'error' => 'Unauthorized']); exit;
 }
 if (($_SESSION['admin_role'] ?? '') !== 'superadmin') {
   http_response_code(403);
-  echo json_encode(['ok' => false, 'error' => 'Forbidden']);
-  exit;
+  echo json_encode(['ok' => false, 'error' => 'Forbidden']); exit;
 }
 
 /* ---------- DB ---------- */
@@ -32,14 +30,11 @@ function send_text_mail(string $to, string $subject, string $body): bool {
   return @mail($to, $subject, $body);
 }
 
-/** Schema helpers */
 function profile_has_birthdate(PDO $db): bool {
   static $cached = null;
   if ($cached !== null) return $cached;
-  try {
-    $stmt = $db->query("SHOW COLUMNS FROM officials_profile LIKE 'birthdate'");
-    $cached = ($stmt && $stmt->rowCount() > 0);
-  } catch (Throwable $e) { $cached = false; }
+  try { $stmt = $db->query("SHOW COLUMNS FROM officials_profile LIKE 'birthdate'"); $cached = ($stmt && $stmt->rowCount() > 0); }
+  catch (Throwable $e) { $cached = false; }
   return $cached;
 }
 function profile_position_nullable(PDO $db): bool {
@@ -48,12 +43,11 @@ function profile_position_nullable(PDO $db): bool {
   try {
     $stmt = $db->query("SHOW COLUMNS FROM officials_profile LIKE 'position'");
     $col = $stmt ? $stmt->fetch(PDO::FETCH_ASSOC) : null;
-    $cached = $col ? (strtoupper((string)$col['Null']) === 'YES') : true; // assume nullable if undetermined
+    $cached = $col ? (strtoupper((string)$col['Null']) === 'YES') : true;
   } catch (Throwable $e) { $cached = true; }
   return $cached;
 }
 
-/** Compute age (years) from YYYY-MM-DD */
 function compute_age(?string $ymd): ?int {
   if (!$ymd) return null;
   [$y, $m, $d] = array_pad(explode('-', $ymd), 3, null);
@@ -70,6 +64,14 @@ function compute_age(?string $ymd): ?int {
   return ($age >= 0) ? $age : null;
 }
 
+/* Normalize legacy/custom roles to supported UI values */
+function normalize_role(?string $role): string {
+  $r = strtolower(trim((string)$role));
+  if ($r === 'kagawad') return 'staff';
+  if ($r !== 'admin' && $r !== 'staff') return 'staff';
+  return $r;
+}
+
 /* ---------- router ---------- */
 $action = $_GET['action'] ?? $_POST['action'] ?? '';
 $raw    = file_get_contents('php://input');
@@ -77,34 +79,61 @@ $body   = json_decode($raw, true);
 
 switch ($action) {
 
-  /* ===== LIST ===== */
+  /* ===== LIST (with filters) ===== */
   case 'list': {
+    $q       = trim((string)($_GET['q'] ?? ''));                  // name or username search
+    $status  = strtolower(trim((string)($_GET['status'] ?? ''))); // '', 'active', 'suspended'
+    $hide    = (isset($_GET['hide_suspended']) && $_GET['hide_suspended'] !== '' && $_GET['hide_suspended'] !== '0');
+
+    $where = [];
+    $params = [];
+
+    if ($q !== '') {
+      // use distinct placeholders to avoid HY093
+      $where[] = "(CONCAT_WS(' ', a.first_name, a.last_name) LIKE :q1 OR a.username LIKE :q2)";
+      $like = '%'.$q.'%';
+      $params[':q1'] = $like;
+      $params[':q2'] = $like;
+    }
+    if ($status === 'active') {
+      $where[] = "a.is_active = 1";
+    } else if ($status === 'suspended') {
+      $where[] = "a.is_active = 0";
+    } else if ($hide) {
+      $where[] = "a.is_active = 1";
+    }
+
+    $whereSql = $where ? ('WHERE '.implode(' AND ', $where)) : '';
     $sql = "SELECT a.admin_id, a.username, a.email, a.first_name, a.last_name, a.role, a.is_active, 
                    a.last_login, a.created_at
             FROM admins a
+            $whereSql
             ORDER BY a.role DESC, a.first_name, a.last_name";
-    $rows = $db->query($sql)->fetchAll();
+    $st = $db->prepare($sql);
+    $st->execute($params);
+    $rows = $st->fetchAll();
+
+    // normalize role values for output
+    foreach ($rows as &$row) {
+      $row['role'] = normalize_role($row['role'] ?? null);
+    }
+
     ok(['items' => $rows]);
   }
 
   /* ===== CREATE ===== */
   case 'create': {
-    // account
     $username   = trim((string)($_POST['username'] ?? ''));
-    $role       = strtolower(trim((string)($_POST['role'] ?? 'staff')));
-
-    // basic
+    $role       = normalize_role($_POST['role'] ?? 'staff'); // normalize early
     $email      = trim((string)($_POST['email'] ?? '')); // optional
     $first_name = trim((string)($_POST['first_name'] ?? ''));
     $last_name  = trim((string)($_POST['last_name'] ?? ''));
     $birthdate  = trim((string)($_POST['birthdate'] ?? ''));
-    $age_in     = isset($_POST['age']) ? (int)$_POST['age'] : null; // client-computed; recompute anyway
     $sex        = $_POST['sex']        ?? null;
     $religion   = $_POST['religion']   ?? null;
     $religion_other = $_POST['religion_other'] ?? null;
     $address    = $_POST['address']    ?? null;
 
-    // phone sanitize & validate (optional but strict if provided)
     $contact_number_raw = (string)($_POST['contact_number'] ?? '');
     $contact_number = preg_replace('/\D+/', '', $contact_number_raw);
     if ($contact_number_raw !== '' && !preg_match('/^0\d{10}$/', $contact_number)) {
@@ -115,39 +144,28 @@ switch ($action) {
       err('Missing required fields', 422);
     }
 
-    // normalize role
-    if (!in_array($role, ['admin','staff'], true)) $role = 'staff';
-
-    // constrain sex
     if (!in_array($sex, ['Male','Female',''], true)) $sex = null;
-
-    // resolve religion (Other -> free text)
     if ($religion === 'Other') $religion = ($religion_other !== '' ? $religion_other : 'Other');
 
-    // validate birthdate & compute age server-side
     $age = compute_age($birthdate);
     if ($birthdate !== '' && $age === null) {
       err('Invalid birthdate', 422);
     }
 
-    // Ensure unique username
     $chk = $db->prepare("SELECT 1 FROM admins WHERE username=:u LIMIT 1");
     $chk->execute([':u' => $username]);
     if ($chk->fetchColumn()) err('Username already exists', 409);
 
-    // Ensure unique email only if provided
     if ($email !== '') {
       $chk2 = $db->prepare("SELECT 1 FROM admins WHERE email=:e LIMIT 1");
       $chk2->execute([':e' => $email]);
       if ($chk2->fetchColumn()) err('Email already exists', 409);
     }
 
-    // Default password and must_change_password flag
     $defaultPassword = 'Bula@2025';
     $hash = password_hash($defaultPassword, PASSWORD_DEFAULT);
-    $mustChange = 1; // require password change on first login
+    $mustChange = 1;
 
-    // Insert into admins
     $ins = $db->prepare("
       INSERT INTO admins (
         username, password_hash, email, first_name, last_name, role,
@@ -164,24 +182,22 @@ switch ($action) {
       ':e' => ($email !== '' ? $email : null),
       ':f' => $first_name,
       ':l' => $last_name,
-      ':r' => $role,
+      ':r' => $role, // already normalized
       ':c' => ($contact_number !== '' ? $contact_number : null),
       ':m' => $mustChange
     ]);
 
     $admin_id = (int)$db->lastInsertId();
 
-    // Optional photo upload
     $photo_url = null;
     if (!empty($_FILES['photo']) && is_array($_FILES['photo']) && ($_FILES['photo']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
       try { $photo_url = uploadProfilePicture($_FILES['photo']); }
       catch (Throwable $e) { error_log('Photo upload error: '.$e->getMessage()); }
     }
 
-    // Insert into officials_profile (position removed from UI; insert NULL/'' safely)
     $hasBirthdate = profile_has_birthdate($db);
     $posNullable  = profile_position_nullable($db);
-    $positionVal  = $posNullable ? null : ''; // safest default for NOT NULL schema
+    $positionVal  = $posNullable ? null : '';
 
     if ($hasBirthdate) {
       $p = $db->prepare("
@@ -220,7 +236,6 @@ switch ($action) {
       ]);
     }
 
-    // Email account details (send only if email provided)
     if ($email !== '') {
       $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
       $host   = $_SERVER['HTTP_HOST'] ?? 'localhost';
@@ -232,7 +247,7 @@ switch ($action) {
                  "Your admin account has been created.\n\n".
                  "Login URL: {$loginUrl}\n".
                  "Username: {$username}\n".
-                 "Email: {$email}\n".
+                 ($email ? "Email: {$email}\n" : "") .
                  "Default Password: {$defaultPassword}\n\n".
                  "For security, you are required to change your password upon first login.\n\n".
                  "Regards,\nBarangay Bula";
@@ -277,7 +292,7 @@ switch ($action) {
       'email'       => $admin['email'],
       'first_name'  => $admin['first_name'],
       'last_name'   => $admin['last_name'],
-      'role'        => $admin['role'],
+      'role'        => normalize_role($admin['role'] ?? null), // normalize here
       'status'      => ((int)$admin['is_active'] === 1 ? 'active' : 'suspended'),
       'last_login'  => $admin['last_login'],
       'created_at'  => $admin['created_at']
@@ -290,12 +305,9 @@ switch ($action) {
   case 'toggle': {
     $id = (int)($_POST['id'] ?? 0);
     if ($id <= 0) err('Invalid ID', 422);
-
-    // prevent self-deactivation (optional safety)
     if ($id === (int)($_SESSION['admin_id'] ?? 0)) {
       err('You cannot change your own activation state.', 403);
     }
-
     $db->exec("UPDATE admins SET is_active = 1 - is_active WHERE admin_id = {$id}");
     ok(['message' => 'toggled']);
   }
@@ -307,7 +319,6 @@ switch ($action) {
     if (empty($_FILES['photo']) || ($_FILES['photo']['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
       err('No file uploaded', 422);
     }
-
     try { $newUrl = uploadProfilePicture($_FILES['photo']); }
     catch (Throwable $e) { err('Upload failed: ' . $e->getMessage(), 500); }
 

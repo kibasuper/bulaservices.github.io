@@ -17,11 +17,26 @@ if (isset($_SESSION['last_activity']) && (time() - $_SESSION['last_activity'] > 
 }
 $_SESSION['last_activity'] = time();
 
-// Get admin info
-$admin_username = $_SESSION['admin_username'] ?? 'Admin';
-$admin_role     = $_SESSION['admin_role'] ?? 'kagawad';   // default = staff
-$admin_position = $_SESSION['admin_position'] ?? '';
-$is_superadmin  = ($admin_role === 'superadmin');
+// Load admin info from DB (for full name display)
+try {
+    $db = getDBConnection();
+    $stmt = $db->prepare("SELECT first_name, last_name, role, contact_number FROM admins WHERE admin_id = ? LIMIT 1");
+    $stmt->execute([$_SESSION['admin_id']]);
+    $admin = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$admin) {
+        $admin_name = 'Administrator';
+        $admin_role = 'unknown';
+    } else {
+        $admin_name = trim($admin['first_name'] . ' ' . $admin['last_name']);
+        $admin_role = $admin['role'];
+    }
+} catch (Throwable $e) {
+    $admin_name = 'Administrator';
+    $admin_role = 'unknown';
+}
+
+// Check if superadmin
+$is_superadmin = ($admin_role === 'superadmin');
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -43,13 +58,11 @@ $is_superadmin  = ($admin_role === 'superadmin');
     <div class="time-display"><div id="philippine-time">Loading Time...</div></div>
     <div class="user-menu">
       <button class="user-menu-btn" id="user-menu-btn" aria-expanded="false">
-        <span><?= htmlspecialchars($admin_username) ?></span>
+        <span><?= htmlspecialchars($admin_name) ?></span>
         <i class="fas fa-user-circle"></i>
       </button>
       <div class="dropdown-menu" id="dropdown-menu">
-        <a href="profile.php"><i class="fas fa-user"></i> My Profile</a>
-        <a href="settings.php"><i class="fas fa-cog"></i> Account Settings</a>
-        <a href="notifications.php"><i class="fas fa-bell"></i> Notifications</a>
+        <a href="profile.php"><i class="fas fa-user"></i> Admin Profile</a>
         <div class="dropdown-divider"></div>
         <button id="logout-btn"><i class="fas fa-sign-out-alt"></i> Log Out</button>
       </div>

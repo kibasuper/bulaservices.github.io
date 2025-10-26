@@ -28,6 +28,27 @@ const fmtDate = s => {
   return isNaN(d) ? '—' : d.toLocaleDateString('en-PH', { year:'numeric', month:'short', day:'numeric' });
 };
 const escapeHtml = s => String(s ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
+const toTitle = s => (s ? (s.charAt(0).toUpperCase()+s.slice(1)) : '—');
+
+function computeAge(ymd) {
+  if (!ymd) return '—';
+  const [y, m, d] = (ymd || '').split('-').map(n=>parseInt(n,10));
+  if (!y || !m || !d) return '—';
+  const now = new Date();
+  let age = now.getFullYear() - y;
+  const hadBday = (now.getMonth()+1 > m) || ((now.getMonth()+1 === m) && (now.getDate() >= d));
+  if (!hadBday) age -= 1;
+  return age >= 0 ? String(age) : '—';
+}
+// ====== Helpers ======
+function resolveProfileUrl(p) {
+  if (!p) return './images/profile-placeholder.jpg';
+
+  // If API gives us an admin-serve URL or absolute URL, use as-is.
+  // Do NOT rewrite to /uploads anymore.
+  return String(p).trim();
+}
+
 
 // ====== API ======
 async function apiGet(url) {
@@ -60,11 +81,13 @@ async function loadResidents(resetPage=false) {
   const status = filterStatus?.value || 'all';
 
   const params = new URLSearchParams({
-    q, gender, residency, status, page:String(page), per_page:String(perPage)
+    q, gender, residency, status,
+    page:String(page), per_page:String(perPage)
   });
   const url = `./php/resident_list.php?${params.toString()}`;
 
-  tbody.innerHTML = `<tr><td colspan="8" class="center muted">Loading…</td></tr>`;
+  // Keep colspan in sync with <thead> column count
+  tbody.innerHTML = `<tr><td colspan="6" class="center muted">Loading…</td></tr>`;
 
   try {
     const data = await apiGet(url);
@@ -77,43 +100,50 @@ async function loadResidents(resetPage=false) {
     nextPageBtn.disabled = !lastPageMeta.hasNext;
 
     if (!rows.length) {
-      tbody.innerHTML = `<tr><td colspan="8" class="center muted">No residents found</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="6" class="center muted">No residents found</td></tr>`;
       return;
     }
 
-    tbody.innerHTML = '';
-    rows.forEach((r) => {
-      const full = (r.full_name || `${r.first_name || ''} ${r.last_name || ''}`.trim()) || '—';
-      const prof = r.profile_picture_url || './pics/profile-placeholder.jpg';
-      const genderDisp = r.gender ? (r.gender.charAt(0).toUpperCase()+r.gender.slice(1)) : '—';
-      const residencyDisp = r.resident_type ? (r.resident_type.charAt(0).toUpperCase()+r.resident_type.slice(1)) : '—';
-      const status = (r.account_status || 'active').toLowerCase();
-      const statusHtml = `<span class="status-badge ${status === 'suspended' ? 'suspended' : 'active'}">${status === 'suspended' ? 'Suspended' : 'Active'}</span>`;
+  tbody.innerHTML = '';
+  rows.forEach((r) => {
+    const full = (r.full_name || `${r.first_name || ''} ${r.last_name || ''}`.trim()) || '—';
+    const genderDisp = r.gender ? toTitle(r.gender) : '—';
+    const residencyDisp = toTitle(r.resident_type || r.residency || '—');
+    const status = (r.account_status || 'active').toLowerCase();
+    const statusHtml = `<span class="status-badge ${status === 'suspended' ? 'suspended' : 'active'}">${status === 'suspended' ? 'Suspended' : 'Active'}</span>`;
+    const prof = resolveProfileUrl(r.profile_picture_url);
 
-      const tr = document.createElement('tr');
-      tr.dataset.id = String(r.id);
-      tr.innerHTML = `
-        <td>
-          <div class="profile-mini"><img src="${escapeHtml(prof)}" alt=""></div>
-        </td>
-        <td>${escapeHtml(full)}</td>
-        <td>${escapeHtml(genderDisp)}</td>
-        <td>${fmtDate(r.date_of_birth)}</td>
-        <td>${escapeHtml(residencyDisp)}</td>
-        <td>${statusHtml}</td>
-        <td>${escapeHtml(r.contact_number || '')}</td>
-        <td>${escapeHtml(r.address || '')}</td>
-      `;
-      // row click opens view
-      tr.addEventListener('click', () => openView(r.id));
-      tbody.appendChild(tr);
+    const tr = document.createElement('tr');
+    tr.dataset.id = String(r.id);
+    tr.innerHTML = `
+      <td class="avatar">
+        <img src="${escapeHtml(prof)}" alt="Profile" onerror="this.src='./images/profile-placeholder.jpg'">
+      </td>
+      <td class="cell-name">${escapeHtml(full)}</td>
+      <td>${escapeHtml(genderDisp)}</td>
+      <td>${escapeHtml(residencyDisp)}</td>
+      <td>${statusHtml}</td>
+      <td class="cell-actions">
+        <button class="btn tiny view-btn" type="button">View</button>
+      </td>
+    `;
+
+    // Row click opens view; don't double fire when clicking the button
+    tr.addEventListener('click', (e) => {
+      if ((e.target && e.target.closest('.view-btn'))) return;
+      openView(r.id);
     });
+    tr.querySelector('.view-btn')?.addEventListener('click', () => openView(r.id));
+
+    tbody.appendChild(tr);
+  });
 
   } catch (e) {
     console.error(e);
-    tbody.innerHTML = `<tr><td colspan="8" class="center" style="color:#c00">${escapeHtml(e.message || 'Load failed')}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6" class="center" style="color:#c00">${escapeHtml(e.message || 'Load failed')}</td></tr>`;
   }
 }
+
 
 // ====== View Modal ======
 async function openView(id) {
@@ -123,7 +153,7 @@ async function openView(id) {
     currentResidentId = r.id;
 
     const full = (r.full_name || `${r.first_name || ''} ${r.last_name || ''}`.trim()) || '—';
-    const prof = r.profile_picture_url || './pics/profile-placeholder.jpg';
+    const prof = r.profile_picture_url || './images/profile-placeholder.jpg';
     const status = (r.account_status || 'active').toLowerCase();
     currentResidentStatus = status;
 
@@ -132,16 +162,17 @@ async function openView(id) {
     document.getElementById('vEmail').textContent = r.email || '—';
 
     document.getElementById('vGender').textContent = (r.gender || '—');
-    document.getElementById('vDob').textContent = fmtDate(r.date_of_birth);
-    document.getElementById('vResidency').textContent = (r.resident_type || '—');
-    document.getElementById('vContact').textContent = r.contact_number || '—';
+    document.getElementById('vAge').textContent = computeAge(r.date_of_birth);
+    document.getElementById('vResidency').textContent = toTitle(r.resident_type || '—');
+    document.getElementById('vYearStarted').textContent = r.year_started_staying ? String(r.year_started_staying) : '—';
     document.getElementById('vAddress').textContent = r.address || '—';
     document.getElementById('vCreated').textContent = fmtDate(r.created_at);
     document.getElementById('vStatus').textContent = status === 'suspended' ? 'Suspended' : 'Active';
 
-    // toggle button text
-    btnToggleStatus.textContent = status === 'suspended' ? 'Restore Account' : 'Suspend Account';
-    btnToggleStatus.className = 'btn ' + (status === 'suspended' ? 'primary' : 'outline');
+    // Button text + style
+    const willActivate = (status === 'suspended');
+    btnToggleStatus.textContent = willActivate ? 'Activate' : 'Deactivate';
+    btnToggleStatus.className = 'btn ' + (willActivate ? 'primary' : 'outline');
 
     viewModal.setAttribute('aria-hidden', 'false');
     viewModal.querySelector('.modal-card').focus();
@@ -155,7 +186,14 @@ viewModal.addEventListener('click', (e)=>{ if(e.target===viewModal) closeView();
 
 btnToggleStatus?.addEventListener('click', async () => {
   if (!currentResidentId) return;
-  const action = currentResidentStatus === 'suspended' ? 'restore' : 'suspend';
+  const goingActive = (currentResidentStatus === 'suspended');
+  const action = goingActive ? 'restore' : 'suspend';
+
+  const ok = window.confirm(goingActive
+    ? 'Activate this account? The user will be able to sign in again.'
+    : 'Deactivate this account? The user will be signed out and blocked until reactivated.');
+  if (!ok) return;
+
   try {
     await apiPost('./php/resident_status.php', { id: currentResidentId, action });
     closeView();
@@ -167,7 +205,7 @@ btnToggleStatus?.addEventListener('click', async () => {
 
 // ====== Events ======
 document.addEventListener('DOMContentLoaded', ()=> loadResidents(true));
-document.getElementById('btnSaveResident')?.remove(); // safeguard if old DOM lingers
+document.getElementById('btnSaveResident')?.remove();
 
 btnRefresh?.addEventListener('click', () => loadResidents(false));
 

@@ -223,6 +223,43 @@ $CSRF = generateCsrfToken();
           </div>
         </div>
 
+        <!-- Change Password -->
+        <div class="profile-section">
+          <h2 class="section-title"><i class="fas fa-key"></i> Change Password</h2>
+          <p class="muted" style="margin: .25rem 0 .75rem;">
+            Enter your current password and your new password twice to confirm.
+          </p>
+
+          <div class="info-grid">
+            <div class="info-item">
+              <div class="info-label">Current Password:</div>
+              <div class="info-value">
+                <input type="password" id="pwOld" class="form-control" autocomplete="current-password" placeholder="Current password">
+              </div>
+            </div>
+
+            <div class="info-item">
+              <div class="info-label">New Password:</div>
+              <div class="info-value">
+                <input type="password" id="pwNew" class="form-control" autocomplete="new-password" placeholder="New password (min 8 chars)">
+              </div>
+            </div>
+
+            <div class="info-item">
+              <div class="info-label">Confirm New Password:</div>
+              <div class="info-value">
+                <input type="password" id="pwNew2" class="form-control" autocomplete="new-password" placeholder="Repeat new password">
+              </div>
+            </div>
+          </div>
+
+          <div class="form-actions" style="margin-top:.75rem; display:flex; gap:.5rem;">
+            <button class="btn btn-primary" id="changePwBtn"><i class="fas fa-save"></i> Update Password</button>
+            <button class="btn btn-secondary" id="changePwClearBtn" type="button">Clear</button>
+          </div>
+        </div>
+
+
         <!-- Security note -->
         <div class="security-section">
           <h2 class="section-title"><i class="fas fa-lock"></i> Edit Security</h2>

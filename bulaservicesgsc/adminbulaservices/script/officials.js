@@ -1,5 +1,7 @@
 document.addEventListener('DOMContentLoaded', () => {
   const tableBody = document.querySelector('#officialsTable tbody');
+  const emptyState = document.getElementById('emptyState');
+
   const btnAdd = document.getElementById('btnAdd');
   const createModal = document.getElementById('createModal');
   const closeCreate = document.getElementById('closeCreate');
@@ -9,6 +11,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const formCreate = document.getElementById('formCreate');
   const detailsBody = document.getElementById('detailsBody');
 
+  // Filters
+  const filterSearch = document.getElementById('filterSearch');
+  const filterStatus = document.getElementById('filterStatus');
+  const toggleHideSuspended = document.getElementById('toggleHideSuspended');
+
   // Success modal
   const createdModal = document.getElementById('createdModal');
   const createdBody  = document.getElementById('createdBody');
@@ -17,6 +24,40 @@ document.addEventListener('DOMContentLoaded', () => {
   const closeCreatedModal = () => { if (createdModal) createdModal.style.display = 'none'; };
   if (closeCreated) closeCreated.onclick = closeCreatedModal;
   if (createdModal) createdModal.addEventListener('click', (e)=>{ if (e.target === createdModal) closeCreatedModal(); });
+
+  // Pretty confirm modal
+  const confirmModal = document.getElementById('confirmModal');
+  const confirmTitle = document.getElementById('confirmTitle');
+  const confirmText  = document.getElementById('confirmText');
+  const confirmOk    = document.getElementById('confirmOk');
+  const confirmCancel= document.getElementById('confirmCancel');
+
+  function niceConfirm({ title, text, danger=false, confirmText='Confirm', cancelText='Cancel' }) {
+    return new Promise((resolve) => {
+      if (confirmTitle) confirmTitle.textContent = title || 'Confirm action';
+      if (confirmText)  confirmText.textContent  = text  || 'Are you sure?';
+      if (confirmOk) {
+        confirmOk.textContent = confirmText;
+        confirmOk.classList.toggle('btn-danger-solid', danger);
+        confirmOk.classList.toggle('btn-primary-solid', !danger);
+      }
+      confirmModal.classList.add('open');
+
+      const onClose = (val) => {
+        confirmModal.classList.remove('open');
+        confirmOk.onclick = null;
+        confirmCancel.onclick = null;
+        confirmModal.onclick = null;
+        resolve(val);
+      };
+      confirmOk.onclick = () => onClose(true);
+      confirmCancel.onclick = () => onClose(false);
+      confirmModal.onclick = (e) => { if (e.target === confirmModal) onClose(false); };
+      document.addEventListener('keydown', function esc(e) {
+        if (e.key === 'Escape') { onClose(false); document.removeEventListener('keydown', esc); }
+      });
+    });
+  }
 
   // Photo preview (create)
   const createPhotoInput = document.getElementById('createPhoto');
@@ -81,8 +122,12 @@ document.addEventListener('DOMContentLoaded', () => {
   /* API helper */
   const api = async (action, data=null, method='POST') => {
     const opts = { method };
-    if (data) opts.body = data;
-    const url = `./php/officials_api.php?action=${encodeURIComponent(action)}` + (method==='GET' && data ? `&${new URLSearchParams(data).toString()}` : '');
+    let url = `./php/officials_api.php?action=${encodeURIComponent(action)}`;
+    if (method === 'GET') {
+      if (data) url += `&${new URLSearchParams(data).toString()}`;
+    } else if (data) {
+      opts.body = data;
+    }
     const res = await fetch(url, opts);
     if (!res.ok) {
       const t = await res.text();
@@ -92,15 +137,40 @@ document.addEventListener('DOMContentLoaded', () => {
     return res.json();
   };
 
-  /* Load list (Name · Last login · Status) */
+  /* Build current filter params */
+  function currentListParams() {
+    const q = (filterSearch?.value || '').trim();
+    let status = (filterStatus?.value || 'all');
+    const hideSusp = !!(toggleHideSuspended && toggleHideSuspended.checked);
+
+    if (hideSusp && status === 'all') status = 'active';
+
+    const params = {};
+    if (q) params.q = q;
+    if (status && status !== 'all') params.status = status; // 'active' | 'suspended'
+    if (hideSusp) params.hide_suspended = '1';
+    return params;
+  }
+
+  /* Load list */
   async function loadList() {
-    const { data } = await api('list', null, 'GET');
+    const params = currentListParams();
+    const { data } = await api('list', params, 'GET');
+    const items = data.items || [];
+
     tableBody.innerHTML = '';
-    (data.items || []).forEach(o => {
+    if (!items.length) {
+      if (emptyState) emptyState.style.display = '';
+      return;
+    }
+    if (emptyState) emptyState.style.display = 'none';
+
+    items.forEach(o => {
       const tr = document.createElement('tr');
       tr.dataset.id = o.admin_id;
       tr.innerHTML = `
         <td>${(o.first_name||'') + ' ' + (o.last_name||'')}</td>
+        <td>@${o.username}</td>
         <td>${o.last_login || '—'}</td>
         <td><span class="badge ${o.is_active ? 'active':'suspended'}">${o.is_active ? 'Active' : 'Suspended'}</span></td>
       `;
@@ -124,11 +194,9 @@ document.addEventListener('DOMContentLoaded', () => {
   /* Create submit */
   formCreate.onsubmit = async (e) => {
     e.preventDefault();
-    // ensure age is updated in case user picked date and never blurred
     if (birthdateEl && ageEl && birthdateEl.value && !ageEl.value) {
       ageEl.value = computeAgeFromBirthdate(birthdateEl.value);
     }
-    // client phone validation
     if (phoneEl && phoneEl.value && !/^0\d{10}$/.test(phoneEl.value)) {
       alert('Contact number must be exactly 11 digits and start with 0 (e.g., 09XXXXXXXXX).');
       phoneEl.focus();
@@ -172,7 +240,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (createdCloseBtn) createdCloseBtn.onclick = closeCreatedModal;
       }
 
-      // Close create, reset, reload list
       closeCreateModal();
       await loadList();
     } catch (err) {
@@ -181,7 +248,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
-  /* Row click -> details modal (no Position chip now) */
+  /* Row click -> details modal (photo replace/remove removed; label is "Role") */
   const openDetails = () => { detailsModal.classList.add('open'); };
   const closeDetailsModal = () => { detailsModal.classList.remove('open'); };
   closeDetails.onclick = closeDetailsModal;
@@ -196,21 +263,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const photoUrl = p.photo_url ? p.photo_url : '';
     const isActive = (a.status === 'active');
+
     detailsBody.innerHTML = `
       <div class="grid g-2" style="align-items:center; margin-bottom:10px">
         <div class="row">
           <img class="photo photo-lg" id="detailPhoto" src="${photoUrl}" alt="" onerror="this.src=''">
-          <div class="grid">
-            <form id="photoForm" enctype="multipart/form-data">
-              <input type="hidden" name="id" value="${a.id}">
-              <input class="inp" type="file" name="photo" id="detailsPhotoInput" accept="image/*">
-              <div class="row">
-                <button type="submit" class="btn">Replace photo</button>
-                <button id="removePhotoBtn" type="button" class="btn">Remove</button>
-              </div>
-            </form>
-            <small style="color:#64748b">JPEG/PNG/GIF up to 2MB</small>
-          </div>
         </div>
 
         <div>
@@ -238,6 +295,7 @@ document.addEventListener('DOMContentLoaded', () => {
           <div><div class="lbl">Sex</div><input class="inp" value="${p.sex || ''}" disabled></div>
           <div><div class="lbl">Religion</div><input class="inp" value="${p.religion || ''}" disabled></div>
           <div><div class="lbl">Contact</div><input class="inp" value="${p.contact_number || ''}" disabled></div>
+          <div><div class="lbl">Role</div><input class="inp" value="${a.role}" disabled></div>
         </div>
         <div class="mt10">
           <div class="lbl">Address</div>
@@ -258,39 +316,21 @@ document.addEventListener('DOMContentLoaded', () => {
     `;
     openDetails();
 
-    /* Photo replace/remove */
-    const photoForm = document.getElementById('photoForm');
-    const detailsPhotoInput = document.getElementById('detailsPhotoInput');
-    const detailPhoto = document.getElementById('detailPhoto');
-
-    photoForm.onsubmit = async (ev) => {
-      ev.preventDefault();
-      if (!detailsPhotoInput.files || !detailsPhotoInput.files[0]) {
-        alert('Choose a photo first.'); return;
-      }
-      const fd2 = new FormData(photoForm);
-      try {
-        const { data } = await api('update_photo', fd2);
-        if (detailPhoto) detailPhoto.src = data.photo_url;
-        alert('Photo updated.');
-      } catch (err) {
-        alert('Failed to update photo.'); console.error(err);
-      }
-    };
-    document.getElementById('removePhotoBtn').onclick = async () => {
-      if (!confirm('Remove profile photo?')) return;
-      const fd3 = new FormData(); fd3.append('id', a.id);
-      await api('remove_photo', fd3);
-      if (detailPhoto) detailPhoto.src = '';
-      alert('Photo removed.');
-    };
-
-    /* Activate/Deactivate */
+    // Activate/Deactivate with pretty confirm
     const toggleBtn = document.getElementById('toggleBtn');
     const statusBadge = document.getElementById('statusBadge');
     toggleBtn.onclick = async () => {
       const goingActive = (toggleBtn.textContent.trim().toLowerCase() === 'activate');
-      if (!confirm(`Are you sure you want to ${goingActive ? 'activate' : 'deactivate'} this account?`)) return;
+
+      const ok = await niceConfirm({
+        title: goingActive ? 'Activate account?' : 'Deactivate account?',
+        text: goingActive
+          ? 'The user will be able to sign in again.'
+          : 'The user will be signed out and will not be able to log in until reactivated.',
+        confirmText: goingActive ? 'Activate' : 'Deactivate',
+        danger: !goingActive
+      });
+      if (!ok) return;
 
       const previousText = toggleBtn.textContent;
       toggleBtn.disabled = true;
@@ -313,7 +353,7 @@ document.addEventListener('DOMContentLoaded', () => {
           statusBadge.classList.toggle('suspended', !nowActive);
         }
 
-        // refresh table
+        // refresh table with current filters applied
         await loadList();
       } catch (err) {
         alert('Failed to update account status.');
@@ -324,6 +364,16 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     };
   });
+
+  // Debounced search
+  let searchTimer = null;
+  const onFilterChanged = () => {
+    if (searchTimer) clearTimeout(searchTimer);
+    searchTimer = setTimeout(loadList, 220);
+  };
+  filterSearch.addEventListener('input', onFilterChanged);
+  filterStatus.addEventListener('change', onFilterChanged);
+  toggleHideSuspended.addEventListener('change', onFilterChanged);
 
   // Init
   loadList();

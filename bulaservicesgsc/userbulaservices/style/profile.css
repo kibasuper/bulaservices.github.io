@@ -379,3 +379,33 @@ body {
   }
   @keyframes snack-in { from {opacity:0; transform:translate(-50%,6px)} to {opacity:1; transform:translate(-50%,0)} }
   .snackbar.hide{ animation:toast-out .18s ease-in both }
+
+/* Tag next to the purok number on the profile view */
+.purok-name-tag {
+  margin-left: .5rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #eff6ff;
+  color: #2563eb;
+  font-size: .8rem;
+  white-space: nowrap;
+}
+
+/* Small helper under the Purok input when editing */
+.purok-name-hint {
+  margin-top: .35rem;
+  font-size: .85rem;
+  color: #475569;
+}
+
+/* Password toggle */
+.pw-wrap { position: relative; }
+.pw-toggle {
+  position: absolute; inset: 0 8px 0 auto;  /* right inside the input */
+  width: 36px; height: 100%;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 0; background: transparent; cursor: pointer;
+  color: #64748b;
+}
+.pw-toggle:focus { outline: 2px solid #2563eb33; border-radius: 6px; }
+.pw-wrap input.form-control { padding-right: 42px; }

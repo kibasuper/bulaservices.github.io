@@ -457,6 +457,57 @@ document.addEventListener('DOMContentLoaded', function () {
 })();
 });
 
+// Forgot Password modal behavior (no nested forms!)
+(function setupForgotModal(){
+  const forgotLink   = document.getElementById('forgotLink');
+  const modal        = document.getElementById('forgotModal');
+  const form         = document.getElementById('forgotForm');
+  const emailInput   = document.getElementById('forgotEmail');
+  const btnCancel    = document.getElementById('forgotCancel');
+  const statusBox    = document.getElementById('forgotStatus');
+
+  if (!forgotLink || !modal || !form || !emailInput) return;
+
+  function open() {
+    modal.classList.add('open');
+    modal.setAttribute('aria-hidden','false');
+    emailInput.setAttribute('required','required');
+    emailInput.focus();
+  }
+  function close() {
+    modal.classList.remove('open');
+    modal.setAttribute('aria-hidden','true');
+    emailInput.removeAttribute('required');
+    form.reset();
+    if (statusBox) statusBox.textContent = '';
+  }
+
+  forgotLink.addEventListener('click', (e)=>{ e.preventDefault(); open(); });
+  btnCancel?.addEventListener('click', close);
+  modal.addEventListener('click', (e)=>{ if (e.target === modal) close(); });
+
+  form.addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    statusBox.textContent = 'Sending...';
+    const fd = new FormData(form);
+    try {
+      const resp = await fetch('./php/forgot_api.php', { method:'POST', body:fd, credentials:'same-origin' });
+      const text = await resp.text();
+      let json; try { json = JSON.parse(text); } catch { throw new Error('Bad server response'); }
+      if (json.success) {
+        statusBox.textContent = 'Check your email for the reset link.';
+        setTimeout(close, 1200);
+      } else {
+        statusBox.textContent = json.message || 'Unable to send reset link.';
+      }
+    } catch (err) {
+      console.error(err);
+      statusBox.textContent = 'Network error. Please try again.';
+    }
+  });
+})();
+
+
 // Purok List Dialog Functionality
 (function setupPurokListDialog() {
   const dialog = document.getElementById('purokListDialog');
