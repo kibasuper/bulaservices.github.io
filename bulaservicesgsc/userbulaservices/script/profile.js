@@ -31,7 +31,29 @@ document.addEventListener('DOMContentLoaded', () => {
       if (e.key === 'Enter') onPwConfirm();
     });
   }
-  
+
+  // --- Live guards for numeric-only fields ---
+
+  // Purok: digits only, clamp 1..25
+  const purokEl = document.getElementById('purokInput');
+  if (purokEl) {
+    purokEl.addEventListener('input', () => {
+      purokEl.value = digitsOnly(purokEl.value);                 // keep digits
+      const n = clampInt(purokEl.value, 1, 25);                  // clamp range
+      purokEl.value = (n == null ? '' : String(n));
+      purokEl.setCustomValidity(n == null ? 'Enter a number from 1 to 25' : '');
+    });
+  }
+
+  // Contact number: digits only, exactly 11, must start with 09
+  const contactEl = document.getElementById('contactNumberInput');
+  if (contactEl) {
+    contactEl.addEventListener('input', () => {
+      contactEl.value = digitsOnly(contactEl.value).slice(0, 11);
+      const v = contactEl.value;
+      contactEl.setCustomValidity(/^09\d{9}$/.test(v) ? '' : 'Must be 11 digits and start with 09');
+    });
+  }
 });
 
 /* -------------------- helpers -------------------- */
@@ -42,12 +64,12 @@ function setInputValue(id, val){ const el=document.getElementById(id); if(el) el
 
 async function api(url, opts={}) {
   const res = await fetch(url, { credentials:'include', ...opts });
-  const json = await res.json().catch(()=>({ok:false,error:`HTTP ${res.status}`})); 
+  const json = await res.json().catch(()=>({ok:false,error:`HTTP ${res.status}`}));
   if (!res.ok || !json.ok) throw new Error(json.error || `HTTP ${res.status}`);
   return json;
 }
 
-//Change pass
+// Password change
 async function onChangePassword(e){
   e.preventDefault();
 
@@ -61,7 +83,6 @@ async function onChangePassword(e){
   if (newPw.length < 8) { showToast('warn','Too short','New password must be at least 8 characters.'); return; }
   if (newPw !== newPw2) { showToast('warn','Mismatch','New password entries do not match.'); return; }
   if (newPw === oldPw)  { showToast('warn','No change','New password must be different from current password.'); return; }
-
 
   if (!/[A-Za-z]/.test(newPw) || !/\d/.test(newPw)) {
     showToast('warn','Weak password','Consider using letters and numbers for a stronger password.');
@@ -77,9 +98,7 @@ async function onChangePassword(e){
   try {
     await postForm(window.PROFILE_API, fd);
     showToast('success','Password updated','Your password has been changed.');
-    // Clear fields
     ['pwOld','pwNew','pwNew2'].forEach(id => { const el=document.getElementById(id); if (el) el.value=''; });
-    // (Optional) Refresh CSRF and user info
     await initProfile();
   } catch(err) {
     showToast('error','Update failed', err.message || 'Please check your current password.');
@@ -87,6 +106,14 @@ async function onChangePassword(e){
   }
 }
 
+function digitsOnly(s){ return (s || '').replace(/\D+/g,''); }
+function clampInt(n, min, max){
+  n = parseInt(n, 10);
+  if (Number.isNaN(n)) return null;
+  if (min != null && n < min) n = min;
+  if (max != null && n > max) n = max;
+  return n;
+}
 
 // --- Purok name map (same list you used on index.php) ---
 const PUROK_NAMES = {
@@ -103,7 +130,6 @@ function getPurokName(n) {
   const k = String(parseInt(n, 10));
   return PUROK_NAMES[k] || '';
 }
-
 
 /* ---- Toast / Snackbar helpers ---- */
 function showToast(type, title, message, timeout=4000){
@@ -138,7 +164,6 @@ function showSavedSnack(text='Changes saved!'){
   setTimeout(() => { el.classList.add('hide'); setTimeout(()=>el.remove(), 160); }, 1500);
 }
 
-
 /* -------------------- load & hydrate -------------------- */
 async function initProfile() {
   try {
@@ -170,22 +195,19 @@ function hydrateUI(u) {
 
   // Residence
   setText('purokValue', u.purok);
-    (function attachPurokNameTag(){
-      const holder = document.getElementById('purokValue');
-      if (!holder) return;
-
-      // Create the tag once if not present
-      let tag = holder.parentElement.querySelector('.purok-name-tag');
-      if (!tag) {
-        tag = document.createElement('span');
-        tag.className = 'purok-name-tag';
-        holder.after(tag);
-      }
-
-      const name = getPurokName(u.purok);
-      tag.textContent = name ? name : '';
-      tag.style.display = name ? 'inline-block' : 'none';
-    })();
+  (function attachPurokNameTag(){
+    const holder = document.getElementById('purokValue');
+    if (!holder) return;
+    let tag = holder.parentElement.querySelector('.purok-name-tag');
+    if (!tag) {
+      tag = document.createElement('span');
+      tag.className = 'purok-name-tag';
+      holder.after(tag);
+    }
+    const name = getPurokName(u.purok);
+    tag.textContent = name ? name : '';
+    tag.style.display = name ? 'inline-block' : 'none';
+  })();
   setText('yearStartedValue', u.year_started_staying);
   setText('contactNumberValue', u.contact_number);
   setText('occupationValue', u.occupation);
@@ -224,7 +246,7 @@ function formatDate(ymd) {
   return d.toLocaleDateString('en-US', {year:'numeric', month:'long', day:'numeric'});
 }
 function formatDateTime(s) {
-  const ds = s.replace(' ', 'T'); // "YYYY-MM-DD HH:MM:SS" → ISO-ish
+  const ds = s.replace(' ', 'T');
   const d = new Date(ds);
   if (isNaN(d)) return s;
   return d.toLocaleString('en-US', {year:'numeric', month:'short', day:'2-digit', hour:'2-digit', minute:'2-digit'});
@@ -298,8 +320,8 @@ function buildSingleFieldPayload(field) {
     suffix:           ['suffix','suffixInput'],
     birthPlace:       ['birth_place','birthPlaceInput'],
     birthDate:        ['birth_date','birthDateInput'],
-    sex:              ['gender','sexInput'],                
-    civilStatus:      ['civil_status','civilStatusInput'],   
+    sex:              ['gender','sexInput'],
+    civilStatus:      ['civil_status','civilStatusInput'],
     purok:            ['purok','purokInput'],
     yearStarted:      ['year_started_staying','yearStartedInput'],
     contactNumber:    ['contact_number','contactNumberInput'],
@@ -313,10 +335,19 @@ function buildSingleFieldPayload(field) {
 
   if (!pair) return fd;
   let value = getInputVal(pair[1]);
+
+  // normalize special fields
   if (field === 'sex') value = (value || 'Male').toLowerCase();
   if (field === 'civilStatus') value = (value || 'Single').toLowerCase();
-  fd.append(pair[0], value);
+  if (field === 'purok') {
+    const n = clampInt(digitsOnly(value), 1, 25);
+    value = (n == null ? '' : String(n));
+  }
+  if (field === 'contactNumber') {
+    value = digitsOnly(value).slice(0, 11);
+  }
 
+  fd.append(pair[0], value);
   return fd;
 }
 
@@ -326,6 +357,11 @@ function buildSaveAllPayload() {
   fd.append('action','update');
   fd.append('csrf_token', window.CSRF_TOKEN);
 
+  const purokRaw = getInputVal('purokInput');
+  const purokN = clampInt(digitsOnly(purokRaw), 1, 25);
+  const contactRaw = getInputVal('contactNumberInput');
+  const contactNorm = digitsOnly(contactRaw).slice(0, 11);
+
   fd.append('first_name', getInputVal('firstNameInput'));
   fd.append('middle_name', getInputVal('middleNameInput'));
   fd.append('last_name', getInputVal('lastNameInput'));
@@ -334,9 +370,9 @@ function buildSaveAllPayload() {
   fd.append('birth_date', getInputVal('birthDateInput'));
   fd.append('gender', (document.getElementById('sexInput').value || 'Male').toLowerCase());
   fd.append('civil_status', (document.getElementById('civilStatusInput').value || 'Single').toLowerCase());
-  fd.append('purok', getInputVal('purokInput'));
+  fd.append('purok', (purokN == null ? '' : String(purokN)));
   fd.append('year_started_staying', getInputVal('yearStartedInput'));
-  fd.append('contact_number', getInputVal('contactNumberInput'));
+  fd.append('contact_number', contactNorm);
   fd.append('occupation', getInputVal('occupationInput'));
   fd.append('address', getInputVal('addressInput'));
 
@@ -368,12 +404,12 @@ async function onPickProfilePic(e) {
 /* -------------------- post helper -------------------- */
 async function postForm(url, formData) {
   const res = await fetch(url, { method:'POST', body: formData, credentials:'include' });
-  const json = await res.json().catch(()=>({ok:false,error:`HTTP ${res.status}`})); // friendlier fallback
+  const json = await res.json().catch(()=>({ok:false,error:`HTTP ${res.status}`}));
   if (!res.ok || !json.ok) throw new Error(json.error || `HTTP ${res.status}`);
   return json;
 }
 
-// Show hide pass
+// Show/hide password
 function addPasswordToggle(input) {
   if (!input || input.dataset.hasToggle === '1') return;
 

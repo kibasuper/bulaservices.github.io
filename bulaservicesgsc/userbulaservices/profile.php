@@ -161,7 +161,14 @@ $CSRF = generateCsrfToken();
                 <button class="edit-btn" onclick="toggleEdit('purok')"><i class="fas fa-edit"></i></button>
               </div>
               <div class="edit-form" id="purokForm">
-                <div class="form-group"><label for="purokInput">Purok</label><input type="text" id="purokInput" class="form-control"></div>
+                <div class="form-group"><label for="purokInput">Purok</label><input
+                                          type="number"
+                                          id="purokInput"
+                                          class="form-control"
+                                          min="1" max="25" step="1"
+                                          inputmode="numeric" pattern="\d*"
+                                          placeholder="Enter a number from 1 to 25">
+                                        <small class="muted">Allowed values: 1–25.</small></div>
                 <div class="form-actions"><button class="btn btn-primary" onclick="saveField('purok')">Save</button><button class="btn btn-secondary" onclick="cancelEdit('purok')">Cancel</button></div>
               </div>
 
@@ -181,7 +188,16 @@ $CSRF = generateCsrfToken();
                 <button class="edit-btn" onclick="toggleEdit('contactNumber')"><i class="fas fa-edit"></i></button>
               </div>
               <div class="edit-form" id="contactNumberForm">
-                <div class="form-group"><label for="contactNumberInput">Contact Number</label><input type="tel" id="contactNumberInput" class="form-control" placeholder="09XXXXXXXXX" pattern="09\d{9}"></div>
+                <div class="form-group"><label for="contactNumberInput">Contact Number</label><input
+                                                                                                type="tel"
+                                                                                                id="contactNumberInput"
+                                                                                                class="form-control"
+                                                                                                inputmode="numeric"
+                                                                                                maxlength="11"
+                                                                                                pattern="09\d{9}"
+                                                                                                placeholder="09XXXXXXXXX"
+                                                                                                aria-describedby="contactHelp">
+                                                                                              <small id="contactHelp" class="muted">Format: 11 digits, must start with 09.</small></div>
                 <div class="form-actions"><button class="btn btn-primary" onclick="saveField('contactNumber')">Save</button><button class="btn btn-secondary" onclick="cancelEdit('contactNumber')">Cancel</button></div>
               </div>
 

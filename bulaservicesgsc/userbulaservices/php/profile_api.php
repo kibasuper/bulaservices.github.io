@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-require_once __DIR__ . '/../server/config.php';      // includes auth_functions.php + db_connection.php
+require_once __DIR__ . '/../server/config.php';      // includes auth + DB
 require_once __DIR__ . '/../server/file_urls.php';   // user_upload_url()
 
 header('Content-Type: application/json; charset=utf-8');
@@ -103,9 +103,9 @@ if ($method==='POST' && $action==='update') {
         'birth_date'            => 'date_null',
         'civil_status'          => 'enum_civil',
         'gender'                => 'enum_gender',
-        'purok'                 => 'str_null',
+        'purok'                 => 'int_purok',          // <- CHANGED: bounded int 1..25
         'year_started_staying'  => 'int_null',
-        'contact_number'        => 'str_required_phone',
+        'contact_number'        => 'str_required_phone', // 09 + 9 digits
         'occupation'            => 'str_null',
         'address'               => 'str_required',
         // email/username/password not editable here
@@ -113,7 +113,7 @@ if ($method==='POST' && $action==='update') {
 
     $patch = [];
     foreach ($fields as $key => $type) {
-        if (!array_key_exists($key, $_POST)) continue;        // not provided → leave unchanged
+        if (!array_key_exists($key, $_POST)) continue; // not provided → leave unchanged
         $raw = $_POST[$key];
 
         // Empty string means "no change" to prevent accidental wipes
@@ -141,9 +141,18 @@ if ($method==='POST' && $action==='update') {
             case 'int_null':
                 $v = trim((string)$raw);
                 if ($v !== '') {
-                    $iv = (int)$v;
+                    $iv = (int)preg_replace('/\D+/', '', $v);
                     $yearNow = (int)date('Y');
                     if ($iv < 1900 || $iv > $yearNow) out(422, ['ok'=>false,'error'=>'Invalid year started staying']);
+                    $patch[$key] = $iv;
+                }
+                break;
+
+            case 'int_purok':
+                $v = trim((string)$raw);
+                if ($v !== '') {
+                    $iv = (int)preg_replace('/\D+/', '', $v);
+                    if ($iv < 1 || $iv > 25) out(422, ['ok'=>false,'error'=>'Purok must be between 1 and 25']);
                     $patch[$key] = $iv;
                 }
                 break;
@@ -247,7 +256,7 @@ if ($method==='POST' && $action==='upload_pic') {
             'ok'      => true,
             'message' => 'Profile picture updated',
             'path'    => $newPath,
-            'url'     => user_upload_url($newPath)   // serve via gated script
+            'url'     => user_upload_url($newPath)
         ]);
     } catch(Throwable $e) {
         out(500, ['ok'=>false,'error'=>$e->getMessage()]);
@@ -272,16 +281,6 @@ if ($method==='POST' && $action==='delete_pic') {
     }
 }
 
-/* -------- upload_pic -------- */
-if ($method==='POST' && $action==='upload_pic') {
-    // ... keep as-is ...
-}
-
-/* -------- delete_pic -------- */
-if ($method==='POST' && $action==='delete_pic') {
-    // ... keep as-is ...
-}
-
 /* -------- change_password (POST) -------- */
 if ($method==='POST' && $action==='change_password') {
     $old = (string)($_POST['old_password'] ?? '');
@@ -300,8 +299,6 @@ if ($method==='POST' && $action==='change_password') {
     if ($new === $old) {
         out(422, ['ok'=>false,'error'=>'New password must be different from current password']);
     }
-    // (optional) complexity hint
-    // if (!preg_match('/[A-Za-z]/', $new) || !preg_match('/\d/', $new)) { ... }
 
     $st = $db->prepare("SELECT password FROM users WHERE id=:id LIMIT 1");
     $st->execute([':id'=>$userId]);
