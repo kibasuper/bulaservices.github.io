@@ -25,7 +25,7 @@ if (!isset($_SESSION['admin_id'])) {
       <h1><i class="fas fa-receipt"></i> Transaction History</h1>
       <div class="header-actions">
         <a href="admin.php" class="dashboard-link"><i class="fas fa-arrow-left"></i> Dashboard</a>
-   
+      </div>
     </div>
   </header>
 
@@ -53,23 +53,42 @@ if (!isset($_SESSION['admin_id'])) {
         </select>
       </div>
 
+      <!-- Search -->
       <div class="filter-group">
-        <label for="transaction-status" class="filter-label">Transaction Status</label>
-        <select id="transaction-status" class="filter-select">
-          <option selected>All Transactions</option>
-          <option>Completed</option>
-          <option>Approved</option>
-          <option>Rejected</option>
-          <option>Pending</option>
-        </select>
+        <label for="transaction-search" class="filter-label">Search (name / reference / receipt / service)</label>
+        <input id="transaction-search" class="filter-input" type="search" placeholder="Search customer name, reference #, receipt #, or service type" />
       </div>
 
+      <!-- Service Type: expanded individual certificate options -->
       <div class="filter-group">
         <label for="service-type" class="filter-label">Service Type</label>
         <select id="service-type" class="filter-select">
-          <option selected>All Services</option>
-          <option>Gym Services</option>
-          <option>Certificates</option>
+          <option value="all" selected>All Services</option>
+          <option value="gym">Gym Services</option>
+
+          <!-- Certificates — use canonical keys used on server -->
+          <option value="barangay_clearance">Barangay Clearance</option>
+          <option value="business_permit">Business Permit</option>
+          <option value="cedula">Cedula</option>
+          <option value="ivs">Individual Voluntary Statement</option>
+          <option value="indigency">Certificate of Indigency</option>
+          <option value="residency">Certificate of Residency</option>
+          <option value="low_income">Low Income Certificate</option>
+          <option value="proof_income">Proof of Income Certificate</option>
+
+          <!-- fallback / other -->
+          <option value="other">Other</option>
+        </select>
+      </div>
+
+      <!-- Status (simplified: removed Approved & Cancelled) -->
+      <div class="filter-group">
+        <label for="transaction-status" class="filter-label">Status</label>
+        <select id="transaction-status" class="filter-select">
+          <option value="all" selected>All Statuses</option>
+          <option value="completed">Completed / Paid</option>
+          <option value="pending">Pending</option>
+          <option value="rejected">Rejected</option>
         </select>
       </div>
 
@@ -94,8 +113,8 @@ if (!isset($_SESSION['admin_id'])) {
           <table class="transactions-table" id="transactions-table">
             <thead>
               <tr>
-                <th>Reference #</th> <!-- NEW first column -->
-                <th>Receipt #</th>   <!-- NEW column -->
+                <th>Reference #</th>
+                <th>Receipt #</th>
                 <th>Date & Time</th>
                 <th>Customer</th>
                 <th>Service Item(s)</th>
@@ -132,7 +151,8 @@ if (!isset($_SESSION['admin_id'])) {
           <div class="meta-item"><span class="lbl">Payment Method:</span>  <span class="val" id="detail-payment"></span></div>
           <div class="meta-item"><span class="lbl">Processed By:</span>    <span class="val" id="detail-processor"></span></div>
           <div class="meta-item"><span class="lbl">Released By:</span>     <span class="val" id="detail-releasedby"></span></div>
-          <div class="meta-item"><span class="lbl">Approved By:</span>          <span class="val" id="detail-status"></span></div>
+          <div class="meta-item"><span class="lbl">Approved By:</span>    <span class="val" id="detail-approvedby"></span></div>
+          <div class="meta-item"><span class="lbl">Status:</span>          <span class="val" id="detail-status"></span></div>
         </div>
 
         <h3 class="section-title">Service Requests</h3>

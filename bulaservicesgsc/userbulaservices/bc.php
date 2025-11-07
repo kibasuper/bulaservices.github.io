@@ -4,9 +4,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/server/config.php';
 require_once __DIR__ . '/server/certificate_functions.php';
 
-function e($v): string {
-    return htmlspecialchars((string)($v ?? ''), ENT_QUOTES, 'UTF-8');
-}
+function e($v): string { return htmlspecialchars((string)($v ?? ''), ENT_QUOTES, 'UTF-8'); }
 
 ensureUserAccess();
 $csrfToken = generateCsrfToken();
@@ -60,10 +58,14 @@ try {
           </div>
           <div class="step" id="step2">
             <div class="step-number">2</div>
-            <div class="step-label">Purpose & Documents</div>
+            <div class="step-label">Purpose & Copies</div>
           </div>
           <div class="step" id="step3">
             <div class="step-number">3</div>
+            <div class="step-label">Requirements Upload</div>
+          </div>
+          <div class="step" id="step4">
+            <div class="step-number">4</div>
             <div class="step-label">Review & Submit</div>
           </div>
         </div>
@@ -73,11 +75,11 @@ try {
           <p>Fill out the form to request a Barangay Clearance</p>
         </div>
 
-        <!-- We submit via JS (fetch), but enctype kept for file uploads -->
+        <!-- We submit via JS (fetch), but enctype must be set for file uploads -->
         <form id="clearanceForm" enctype="multipart/form-data" novalidate>
           <!-- Security -->
           <input type="hidden" name="csrf_token" value="<?= e($csrfToken) ?>">
-          <!-- CRITICAL: force the canonical service_type -->
+          <!-- canonical service_type -->
           <input type="hidden" name="service_type" id="serviceType" value="barangay_clearance">
 
           <!-- Section 1 -->
@@ -116,7 +118,7 @@ try {
             </div>
           </div>
 
-          <!-- Section 2 -->
+          <!-- Section 2 (Purpose & Fee) -->
           <div class="form-section" id="section2" aria-labelledby="step2">
             <div class="purpose-options">
               <label style="display:block;margin-bottom:.5rem;font-weight:500;color:#2c3e50;">
@@ -190,46 +192,109 @@ try {
             </div>
           </div>
 
-          <!-- Section 3 -->
+          <!-- Section 3 (Requirements Upload) -->
           <div class="form-section" id="section3" aria-labelledby="step3">
             <div class="document-options">
               <label style="display:block;margin-bottom:.5rem;font-weight:500;color:#2c3e50;">
-                Purok Clearance Submission Method*
+                Requirements Upload (choose per requirement)
               </label>
 
-              <div class="document-option" onclick="selectDocumentOption('upload')" tabindex="0" role="button" aria-pressed="false">
-                <input type="radio" id="uploadOption" name="document_method" value="upload" required>
-                <label for="uploadOption">Upload Purok Clearance Online</label>
-                <div class="file-upload-container" id="uploadContainer">
-                  <input type="file" id="purokClearance" name="purok_clearance" class="file-upload-input" accept="image/*,.pdf" aria-describedby="fileUploadHelp">
-                  <label for="purokClearance" class="file-upload-button">
+              <!-- Requirement: Purok Clearance -->
+              <div class="req-block" data-key="purok_clearance">
+                <div class="req-title"><i class="fas fa-file"></i> Purok Clearance*</div>
+                <div class="req-method">
+                  <label>
+                    <input type="radio" name="req_method[purok_clearance]" value="upload" required>
+                    Upload now
+                  </label>
+                  <label>
+                    <input type="radio" name="req_method[purok_clearance]" value="hall">
+                    Bring to Hall
+                  </label>
+                </div>
+                <div class="file-upload-container" id="req_ui_purok_clearance" style="display:none">
+                  <input type="file"
+                         id="req_purok_clearance"
+                         name="requirements[purok_clearance]"
+                         class="file-upload-input"
+                         accept="image/*,.pdf"
+                         aria-describedby="purokHelp">
+                  <label for="req_purok_clearance" class="file-upload-button">
                     <i class="fas fa-upload"></i> Choose File (JPG, PNG, PDF, max 5MB)
                   </label>
-                  <div class="file-upload-name" id="fileName">No file chosen</div>
-                  <div class="error-message" id="fileUploadError">Please upload your purok clearance</div>
-                  <p class="note" id="fileUploadHelp">Maximum file size: 5MB. Accepted formats: JPG, PNG, PDF</p>
+                  <div class="file-upload-name" id="name_req_purok_clearance">No file chosen</div>
+                  <div class="error-message" id="err_req_purok_clearance">Please upload your Purok Clearance</div>
+                  <p class="note" id="purokHelp">Maximum file size: 5MB. Accepted formats: JPG, PNG, PDF</p>
                 </div>
               </div>
 
-              <div class="document-option" onclick="selectDocumentOption('hall')" tabindex="0" role="button" aria-pressed="false">
-                <input type="radio" id="hallOption" name="document_method" value="hall">
-                <label for="hallOption">Bring Purok Clearance to Barangay Hall</label>
-                <div class="bring-to-hall-info" id="hallInfo">
-                  <p><i class="fas fa-info-circle"></i> Please bring your purok clearance to:</p>
-                  <p><strong>Barangay Bula Hall</strong></p>
-                  <p>Open Monday-Friday, 8:00 AM - 5:00 PM</p>
-                  <p>Saturday, 8:00 AM - 12:00 PM</p>
+              <!-- Requirement: Valid ID -->
+              <div class="req-block" data-key="valid_id">
+                <div class="req-title"><i class="fas fa-id-card"></i> Valid ID (Government-issued)*</div>
+                <div class="req-method">
+                  <label>
+                    <input type="radio" name="req_method[valid_id]" value="upload" required>
+                    Upload now
+                  </label>
+                  <label>
+                    <input type="radio" name="req_method[valid_id]" value="hall">
+                    Bring to Hall
+                  </label>
+                </div>
+                <div class="file-upload-container" id="req_ui_valid_id" style="display:none">
+                  <input type="file"
+                         id="req_valid_id"
+                         name="requirements[valid_id]"
+                         class="file-upload-input"
+                         accept="image/*,.pdf"
+                         aria-describedby="validIdHelp">
+                  <label for="req_valid_id" class="file-upload-button">
+                    <i class="fas fa-upload"></i> Choose File (JPG, PNG, PDF, max 5MB)
+                  </label>
+                  <div class="file-upload-name" id="name_req_valid_id">No file chosen</div>
+                  <div class="error-message" id="err_req_valid_id">Please upload a Valid ID</div>
+                  <p class="note" id="validIdHelp">Maximum file size: 5MB. Accepted formats: JPG, PNG, PDF</p>
                 </div>
               </div>
-              <div class="error-message" id="documentMethodError">Please select a submission method</div>
+
+              <!-- Requirement: Cedula -->
+              <div class="req-block" data-key="cedula">
+                <div class="req-title"><i class="fas fa-stamp"></i> Community Tax Certificate (Cedula)*</div>
+                <div class="req-method">
+                  <label>
+                    <input type="radio" name="req_method[cedula]" value="upload" required>
+                    Upload now
+                  </label>
+                  <label>
+                    <input type="radio" name="req_method[cedula]" value="hall">
+                    Bring to Hall
+                  </label>
+                </div>
+                <div class="file-upload-container" id="req_ui_cedula" style="display:none">
+                  <input type="file"
+                         id="req_cedula"
+                         name="requirements[cedula]"
+                         class="file-upload-input"
+                         accept="image/*,.pdf"
+                         aria-describedby="cedulaHelp">
+                  <label for="req_cedula" class="file-upload-button">
+                    <i class="fas fa-upload"></i> Choose File (JPG, PNG, PDF, max 5MB)
+                  </label>
+                  <div class="file-upload-name" id="name_req_cedula">No file chosen</div>
+                  <div class="error-message" id="err_req_cedula">Please upload your Cedula</div>
+                  <p class="note" id="cedulaHelp">Maximum file size: 5MB. Accepted formats: JPG, PNG, PDF</p>
+                </div>
+              </div>
+
+              <div class="error-message" id="documentMethodError">Please select a method for each requirement</div>
             </div>
 
             <div class="processing-info">
               <h4><i class="fas fa-clock"></i> Processing Information</h4>
               <p><strong>Processing Time:</strong> 1-3 business days</p>
-              <p><strong>note after 7 days upon approval you will need to request again.</strong></p>
+              <p><strong>Note:</strong> after 7 days upon approval you will need to request again.</p>
               <p>You will receive an e-mail notification once your clearance is ready for pickup.</p>
-              <p class="note">Note: Processing may take longer during peak periods.</p>
+              <p class="note">Processing may take longer during peak periods.</p>
             </div>
 
             <div class="walkin-hours">
@@ -244,12 +309,49 @@ try {
               <button type="button" class="btn btn-secondary" id="prevBtn2">
                 <i class="fas fa-arrow-left"></i> Previous
               </button>
-              <button type="submit" id="submitApplication" class="btn">
-                <i class="fas fa-paper-plane"></i> Submit Application
+              <button type="button" class="btn" id="nextBtn3">
+                Next <i class="fas fa-arrow-right"></i>
               </button>
             </div>
           </div>
-        </form>
+
+                  <!-- Section 4 (Review & Submit) -->
+          <div class="form-section" id="section4" aria-labelledby="step4">
+            <div class="review-wrap">
+              <h4><i class="fas fa-eye"></i> Review your request</h4>
+
+              <div class="review-grid">
+                <div class="review-card">
+                  <h5>Personal Information</h5>
+                  <ul class="review-list" id="revPersonal"></ul>
+                </div>
+
+                <div class="review-card">
+                  <h5>Purpose & Copies</h5>
+                  <ul class="review-list" id="revPurpose"></ul>
+                </div>
+
+                <div class="review-card">
+                  <h5>Requirements</h5>
+                  <div id="revReqs" class="review-reqs"></div>
+                </div>
+
+                <div class="review-card total">
+                  <h5>Total Fee</h5>
+                  <div class="fee-big">₱<span id="revTotal">0.00</span></div>
+                </div>
+              </div>
+            </div>
+
+  <div class="nav-buttons">
+    <button type="button" class="btn btn-secondary" id="prevBtn3">
+      <i class="fas fa-arrow-left"></i> Previous
+    </button>
+    <button type="submit" id="submitApplication" class="btn">
+      <i class="fas fa-paper-plane"></i> Submit Application
+    </button>
+  </div>
+</div>
 
         <div class="requirements">
           <h3><i class="fas fa-clipboard-list"></i> Required Documents</h3>
@@ -292,7 +394,6 @@ try {
     </div>
   </div>
 
-  <!-- Pass the dynamic price to JS -->
   <script>window.BC_PRICE = <?= json_encode((float)$BC_PRICE) ?>;</script>
   <script src="./script/bc.js"></script>
 </body>

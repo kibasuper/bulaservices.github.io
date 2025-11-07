@@ -9,7 +9,7 @@ function e($v): string { return htmlspecialchars((string)($v ?? ''), ENT_QUOTES,
 ensureUserAccess();
 $csrfToken = generateCsrfToken();
 
-$svc = new CertificateRequest();
+$svc  = new CertificateRequest();
 $user = $svc->getUserInfo();
 if (empty($user)) {
     $_SESSION['last_error'] = 'User information not found. Please log in again.';
@@ -20,13 +20,14 @@ if (empty($user)) {
 /* === Live price for IVS (type_code = 'ivs') === */
 try {
     $db  = getDBConnection();
+    if ($db instanceof PDO) $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     $stmt = $db->prepare("SELECT price FROM certificate_pricing WHERE type_code = ? LIMIT 1");
     $stmt->execute(['ivs']);
-    $row  = $stmt->fetch();
-    $IVS_PRICE = isset($row['price']) ? (float)$row['price'] : 100.00; // fallback
+    $row       = $stmt->fetch(PDO::FETCH_ASSOC);
+    $IVS_PRICE = isset($row['price']) ? (float)$row['price'] : 100.00;
 } catch (Throwable $e) {
-    error_log("IVS price fetch error: " . $e->getMessage());
-    $IVS_PRICE = 100.00; // safe fallback
+    error_log("IVS price fetch error: ".$e->getMessage());
+    $IVS_PRICE = 100.00;
 }
 ?>
 <!DOCTYPE html>
@@ -37,9 +38,12 @@ try {
   <title>Individual Voluntary Statement | Barangay Bula</title>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <link rel="stylesheet" href="./style/ivs.css">
+  <!-- Shared wizard styles -->
   <link rel="stylesheet" href="./style/bc.css">
+  <!-- Optional IVS tweaks -->
+  <link rel="stylesheet" href="./style/ivs.css">
   <style>
+    /* lightweight confirm modal */
     .ui-confirm{position:fixed;inset:0;display:none;place-items:center;background:rgba(0,0,0,.45);z-index:1000;padding:1rem}
     .ui-confirm.is-open{display:grid}
     .ui-confirm__dialog{width:100%;max-width:440px;background:#fff;border-radius:16px;box-shadow:0 20px 40px rgba(0,0,0,.2);padding:1.25rem 1.25rem 1rem}
@@ -61,8 +65,9 @@ try {
       <section class="form-container">
         <div class="progress-steps">
           <div class="step active" id="step1"><div class="step-number">1</div><div class="step-label">Personal Information</div></div>
-          <div class="step" id="step2"><div class="step-number">2</div><div class="step-label">Statement Details & Fee</div></div>
-          <div class="step" id="step3"><div class="step-number">3</div><div class="step-label">Review & Submit</div></div>
+          <div class="step" id="step2"><div class="step-number">2</div><div class="step-label">Statement Details & Copies</div></div>
+          <div class="step" id="step3"><div class="step-number">3</div><div class="step-label">Requirements Upload</div></div>
+          <div class="step" id="step4"><div class="step-number">4</div><div class="step-label">Review & Submit</div></div>
         </div>
 
         <div class="form-header">
@@ -70,11 +75,11 @@ try {
           <p>Fill out the form to submit your statement</p>
         </div>
 
-        <form id="ivsForm" enctype="multipart/form-data">
+        <form id="ivsForm" enctype="multipart/form-data" novalidate>
           <input type="hidden" name="csrf_token" value="<?= e($csrfToken) ?>">
-          <input type="hidden" name="service_type" value="ivs"><!-- IMPORTANT -->
+          <input type="hidden" name="service_type" id="serviceType" value="ivs"><!-- IMPORTANT -->
 
-          <!-- Section 1 -->
+          <!-- Section 1: Personal -->
           <div class="form-section active" id="section1" aria-labelledby="step1">
             <div class="form-group">
               <label for="fullName">Full Name</label>
@@ -99,7 +104,7 @@ try {
             </div>
           </div>
 
-          <!-- Section 2 -->
+          <!-- Section 2: Purpose & Fee -->
           <div class="form-section" id="section2" aria-labelledby="step2">
             <div class="purpose-options">
               <label style="display:block;margin-bottom:.5rem;font-weight:500;color:#2c3e50;">Purpose of Statement*</label>
@@ -137,13 +142,13 @@ try {
               <div class="error-message" id="purposeError">Please select a purpose</div>
             </div>
 
-            <!-- Fee Calculator (dynamic price) -->
+            <!-- Fee Calculator -->
             <div class="fee-calculator">
               <h4><i class="fas fa-calculator"></i> Fee Calculator</h4>
               <div class="form-group">
                 <label for="copyQuantity">Number of Copies Needed</label>
                 <div class="copy-quantity">
-                  <input type="number" id="copyQuantity" name="copies" class="form-control" min="1" max="10" value="1">
+                  <input type="number" id="copyQuantity" name="copies" class="form-control" min="1" max="10" value="1" inputmode="numeric">
                   <span id="perCopyText">× ₱<?= number_format($IVS_PRICE, 2) ?> per copy</span>
                 </div>
               </div>
@@ -158,35 +163,44 @@ try {
             </div>
           </div>
 
-          <!-- Section 3 -->
+          <!-- Section 3: Requirements Upload (vertical cards) -->
           <div class="form-section" id="section3" aria-labelledby="step3">
             <div class="document-options">
-              <label style="display:block;margin-bottom:.5rem;font-weight:500;color:#2c3e50;">Purok Clearance Submission Method*</label>
+              <label style="display:block;margin-bottom:.5rem;font-weight:500;color:#2c3e50;">Requirements (choose per requirement)</label>
 
-              <div class="document-option" onclick="selectDocumentOption('upload')" tabindex="0" role="button" aria-pressed="false">
-                <input type="radio" id="uploadOption" name="document_method" value="upload" required>
-                <label for="uploadOption">Upload Purok Clearance Online</label>
-                <div class="file-upload-container" id="uploadContainer" style="display:none;">
-                  <input type="file" id="purokClearance" name="purok_clearance" class="file-upload-input" accept="image/*,.pdf" aria-describedby="fileUploadHelp">
-                  <label for="purokClearance" class="file-upload-button"><i class="fas fa-upload"></i> Choose File (JPG, PNG, PDF, max 5MB)</label>
-                  <div class="file-upload-name" id="fileName">No file chosen</div>
-                  <div class="error-message" id="fileUploadError">Please upload your purok clearance</div>
-                  <p class="note" id="fileUploadHelp">Maximum file size: 5MB. Accepted formats: JPG, PNG, PDF</p>
+              <!-- Purok Clearance -->
+              <div class="req-block" data-key="purok_clearance">
+                <div class="req-title"><i class="fas fa-file"></i> Purok Clearance*</div>
+                <div class="req-method">
+                  <label><input type="radio" name="req_method[purok_clearance]" value="upload" required> Upload now</label>
+                  <label><input type="radio" name="req_method[purok_clearance]" value="hall"> Bring to Hall</label>
+                </div>
+                <div class="file-upload-container" id="req_ui_purok_clearance" style="display:none">
+                  <input type="file" id="req_purok_clearance" name="requirements[purok_clearance]" class="file-upload-input" accept="image/*,.pdf" aria-describedby="purokHelp">
+                  <label for="req_purok_clearance" class="file-upload-button"><i class="fas fa-upload"></i> Choose File (JPG, PNG, PDF, max 5MB)</label>
+                  <div class="file-upload-name" id="name_req_purok_clearance">No file chosen</div>
+                  <div class="error-message" id="err_req_purok_clearance">Please upload your Purok Clearance</div>
+                  <p class="note" id="purokHelp">Maximum file size: 5MB. Accepted formats: JPG, PNG, PDF</p>
                 </div>
               </div>
 
-              <div class="document-option" onclick="selectDocumentOption('hall')" tabindex="0" role="button" aria-pressed="false">
-                <input type="radio" id="hallOption" name="document_method" value="hall">
-                <label for="hallOption">Bring Purok Clearance to Barangay Hall</label>
-                <div class="bring-to-hall-info" id="hallInfo" style="display:none;">
-                  <p><i class="fas fa-info-circle"></i> Please bring your purok clearance to:</p>
-                  <p><strong>Barangay Bula Hall</strong></p>
-                  <p>Open Monday–Friday, 8:00 AM – 5:00 PM</p>
-                  <p>Saturday, 8:00 AM – 12:00 PM</p>
+              <!-- Valid ID -->
+              <div class="req-block" data-key="valid_id">
+                <div class="req-title"><i class="fas fa-id-card"></i> Valid ID (Government-issued)*</div>
+                <div class="req-method">
+                  <label><input type="radio" name="req_method[valid_id]" value="upload" required> Upload now</label>
+                  <label><input type="radio" name="req_method[valid_id]" value="hall"> Bring to Hall</label>
+                </div>
+                <div class="file-upload-container" id="req_ui_valid_id" style="display:none">
+                  <input type="file" id="req_valid_id" name="requirements[valid_id]" class="file-upload-input" accept="image/*,.pdf" aria-describedby="validIdHelp">
+                  <label for="req_valid_id" class="file-upload-button"><i class="fas fa-upload"></i> Choose File (JPG, PNG, PDF, max 5MB)</label>
+                  <div class="file-upload-name" id="name_req_valid_id">No file chosen</div>
+                  <div class="error-message" id="err_req_valid_id">Please upload a Valid ID</div>
+                  <p class="note" id="validIdHelp">Maximum file size: 5MB. Accepted formats: JPG, PNG, PDF</p>
                 </div>
               </div>
 
-              <div class="error-message" id="documentMethodError">Please select a submission method</div>
+              <div class="error-message" id="documentMethodError">Please select a method for each requirement</div>
             </div>
 
             <div class="processing-info">
@@ -206,6 +220,40 @@ try {
 
             <div class="nav-buttons">
               <button type="button" class="btn btn-secondary" id="prevBtn2"><i class="fas fa-arrow-left"></i> Previous</button>
+              <button type="button" class="btn" id="nextBtn3">Next <i class="fas fa-arrow-right"></i></button>
+            </div>
+          </div>
+
+          <!-- Section 4: Review & Submit -->
+          <div class="form-section" id="section4" aria-labelledby="step4">
+            <div class="review-wrap">
+              <h4><i class="fas fa-eye"></i> Review your request</h4>
+
+              <div class="review-grid">
+                <div class="review-card">
+                  <h5>Personal Information</h5>
+                  <ul class="review-list" id="revPersonal"></ul>
+                </div>
+
+                <div class="review-card">
+                  <h5>Statement Details & Copies</h5>
+                  <ul class="review-list" id="revPurpose"></ul>
+                </div>
+
+                <div class="review-card">
+                  <h5>Requirements</h5>
+                  <div id="revReqs" class="review-reqs"></div>
+                </div>
+
+                <div class="review-card total">
+                  <h5>Total Fee</h5>
+                  <div class="fee-big">₱<span id="revTotal">0.00</span></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="nav-buttons">
+              <button type="button" class="btn btn-secondary" id="prevBtn3"><i class="fas fa-arrow-left"></i> Previous</button>
               <button type="submit" id="submitApplication" class="btn"><i class="fas fa-paper-plane"></i> Submit Statement</button>
             </div>
           </div>
@@ -223,7 +271,6 @@ try {
       </section>
     </div>
   </main>
-
 
   <!-- Success Modal -->
   <div id="successModal" class="success-modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
@@ -251,7 +298,14 @@ try {
     </div>
   </div>
 
-  <script>window.IVS_PRICE = <?= json_encode((float)$IVS_PRICE) ?>;</script>
-  <script src="./script/ivs.js?v=2"></script>
+  <script>
+    window.PRICE_TYPE = 'ivs';
+    window.IVS_PRICE  = <?= json_encode((float)$IVS_PRICE) ?>;
+    window.REQUIRED_REQS = [
+      { key: 'purok_clearance', label: 'Purok Clearance' },
+      { key: 'valid_id',        label: 'Valid ID (Government-issued)' }
+    ];
+  </script>
+  <script src="./script/ivs.js?v=4"></script>
 </body>
 </html>

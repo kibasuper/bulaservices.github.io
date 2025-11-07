@@ -204,3 +204,9 @@
 [26-Oct-2025 13:58:30 Etc/UTC] PHP Fatal error:  Cannot redeclare adminUrl() (previously declared in /var/www/bulaservices/data/www/bulaservicesgsc.com/bulaservicesgsc/adminbulaservices/server/config.php:147) in /var/www/bulaservices/data/www/bulaservicesgsc.com/bulaservicesgsc/userbulaservices/server/config.php on line 157
 [26-Oct-2025 14:39:56 Etc/UTC] verify.php: token exists but already consumed id=39
 [26-Oct-2025 14:39:56 Etc/UTC] verify.php: token exists but already consumed id=39
+[27-Oct-2025 01:44:23 Etc/UTC] Get certificate types error: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'certificate_name' in 'field list'
+[27-Oct-2025 01:44:48 Etc/UTC] Get certificate types error: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'certificate_name' in 'field list'
+[27-Oct-2025 01:44:53 Etc/UTC] Get certificate types error: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'certificate_name' in 'field list'
+[27-Oct-2025 14:47:59 Etc/UTC] Admin forgot password error: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'id' in 'field list'
+[27-Oct-2025 15:02:12 Etc/UTC] Admin forgot password error: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'id' in 'field list'
+[28-Oct-2025 06:50:20 Etc/UTC] Admin forgot password error: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'status' in 'where clause'

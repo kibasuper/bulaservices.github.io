@@ -137,7 +137,7 @@ $picUrl = $currentUser['profilePic'] ?: './pics/profile-placeholder.jpg';
             <span class="price-badge" data-price-key="bp" aria-label="Business Clearance price">₱—</span>
         </div>
         <div class="service-content">
-            <h3>Business Clearance</h3>
+            <h3>Business Permit</h3>
             <p>Required document for operating businesses within the barangay</p>
             <a href="bp.php" class="service-link">Request Now</a>
         </div>

@@ -12,21 +12,22 @@ $csrfToken = generateCsrfToken();
 $certificate = new CertificateRequest();
 $userInfo    = $certificate->getUserInfo();
 if (empty($userInfo)) {
-    $_SESSION['last_error'] = 'User information not found. Please log in again.';
-    redirect_root('index.php?error=' . urlencode('Please log in to access this page.'));
-    exit;
+  $_SESSION['last_error'] = 'User information not found. Please log in again.';
+  redirect_root('index.php?error=' . urlencode('Please log in to access this page.'));
+  exit;
 }
 
 /* === Live price for Cedula (type_code = 'cedula') === */
 try {
-    $db  = getDBConnection();
-    $stmt = $db->prepare("SELECT price FROM certificate_pricing WHERE type_code = ? LIMIT 1");
-    $stmt->execute(['cedula']);
-    $row  = $stmt->fetch();
-    $CED_PRICE = isset($row['price']) ? (float)$row['price'] : 5.00; // fallback
+  $db  = getDBConnection();
+  if ($db instanceof PDO) $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+  $stmt = $db->prepare("SELECT price FROM certificate_pricing WHERE type_code = ? LIMIT 1");
+  $stmt->execute(['cedula']);
+  $row  = $stmt->fetch(PDO::FETCH_ASSOC);
+  $CED_PRICE = isset($row['price']) ? (float)$row['price'] : 5.00; // fallback
 } catch (Throwable $e) {
-    error_log("Cedula price fetch error: " . $e->getMessage());
-    $CED_PRICE = 5.00; // safe fallback
+  error_log("Cedula price fetch error: " . $e->getMessage());
+  $CED_PRICE = 5.00; // safe fallback
 }
 ?>
 <!DOCTYPE html>
@@ -37,10 +38,12 @@ try {
   <title>Cedula (Community Tax Certificate) | Barangay Bula</title>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <link rel="stylesheet" href="./style/cedula.css">
+  <!-- Reuse the shared wizard/vertical upload styles -->
   <link rel="stylesheet" href="./style/bc.css">
+  <!-- optional cedula-only tweaks -->
+  <link rel="stylesheet" href="./style/cedula.css">
   <style>
-    /* Pretty confirm (closed by default) */
+    /* Minimal inline styles for the small confirm modal */
     .ui-confirm{position:fixed;inset:0;display:none;place-items:center;background:rgba(0,0,0,.45);z-index:1000;padding:1rem}
     .ui-confirm.is-open{display:grid}
     .ui-confirm__dialog{width:100%;max-width:440px;background:#fff;border-radius:16px;box-shadow:0 20px 40px rgba(0,0,0,.2);padding:1.25rem 1.25rem 1rem}
@@ -63,8 +66,9 @@ try {
       <section class="form-container">
         <div class="progress-steps">
           <div class="step active" id="step1"><div class="step-number">1</div><div class="step-label">Personal Information</div></div>
-          <div class="step" id="step2"><div class="step-number">2</div><div class="step-label">Purpose & Fee</div></div>
-          <div class="step" id="step3"><div class="step-number">3</div><div class="step-label">Review & Submit</div></div>
+          <div class="step" id="step2"><div class="step-number">2</div><div class="step-label">Purpose & Copies</div></div>
+          <div class="step" id="step3"><div class="step-number">3</div><div class="step-label">Requirements Upload</div></div>
+          <div class="step" id="step4"><div class="step-number">4</div><div class="step-label">Review & Submit</div></div>
         </div>
 
         <div class="form-header">
@@ -72,31 +76,28 @@ try {
           <p>Fill out the form to request your Cedula</p>
         </div>
 
-        <form id="cedulaForm" enctype="multipart/form-data">
+        <!-- Submit via JS (fetch); keep enctype for files -->
+        <form id="cedulaForm" enctype="multipart/form-data" novalidate>
           <input type="hidden" name="csrf_token" value="<?= e($csrfToken) ?>">
-          <input type="hidden" name="service_type" value="cedula"><!-- IMPORTANT -->
+          <input type="hidden" name="service_type" id="serviceType" value="cedula"><!-- IMPORTANT -->
 
           <!-- Section 1 -->
           <div class="form-section active" id="section1" aria-labelledby="step1">
             <div class="form-group">
               <label for="fullName">Full Name</label>
-              <input type="text" id="fullName" class="form-control auto-filled" readonly
-                     value="<?= e($userInfo['fullName'] ?? '') ?>">
+              <input type="text" id="fullName" class="form-control auto-filled" readonly value="<?= e($userInfo['fullName'] ?? '') ?>">
             </div>
             <div class="form-group">
               <label for="contactNumber">Contact Number</label>
-              <input type="text" id="contactNumber" class="form-control auto-filled" readonly
-                     value="<?= e($userInfo['contactNumber'] ?? '') ?>">
+              <input type="text" id="contactNumber" class="form-control auto-filled" readonly value="<?= e($userInfo['contactNumber'] ?? '') ?>">
             </div>
             <div class="form-group">
               <label for="address">Complete Address</label>
-              <input type="text" id="address" class="form-control auto-filled" readonly
-                     value="<?= e($userInfo['address'] ?? '') ?>">
+              <input type="text" id="address" class="form-control auto-filled" readonly value="<?= e($userInfo['address'] ?? '') ?>">
             </div>
             <div class="form-group">
               <label for="yearOfStay">Year Started Living in Barangay</label>
-              <input type="text" id="yearOfStay" class="form-control auto-filled" readonly
-                     value="<?= e($userInfo['yearOfStay'] ?? '') ?>">
+              <input type="text" id="yearOfStay" class="form-control auto-filled" readonly value="<?= e($userInfo['yearOfStay'] ?? '') ?>">
             </div>
 
             <div class="nav-buttons">
@@ -105,7 +106,7 @@ try {
             </div>
           </div>
 
-          <!-- Section 2 -->
+          <!-- Section 2: Purpose & Fee -->
           <div class="form-section" id="section2" aria-labelledby="step2">
             <div class="purpose-options">
               <label style="display:block;margin-bottom:.5rem;font-weight:500;color:#2c3e50;">Purpose of Cedula*</label>
@@ -145,7 +146,7 @@ try {
               <div class="form-group">
                 <label for="copyQuantity">Number of Cedulas Needed</label>
                 <div class="copy-quantity">
-                  <input type="number" id="copyQuantity" name="copies" class="form-control" min="1" max="10" value="1">
+                  <input type="number" id="copyQuantity" name="copies" class="form-control" min="1" max="10" value="1" inputmode="numeric">
                   <span id="perCopyText">× ₱<?= number_format($CED_PRICE, 2) ?> per copy</span>
                 </div>
               </div>
@@ -160,35 +161,44 @@ try {
             </div>
           </div>
 
-          <!-- Section 3 -->
+          <!-- Section 3: Requirements Upload (per requirement) -->
           <div class="form-section" id="section3" aria-labelledby="step3">
             <div class="document-options">
-              <label style="display:block;margin-bottom:.5rem;font-weight:500;color:#2c3e50;">Purok Clearance Submission Method*</label>
+              <label style="display:block;margin-bottom:.5rem;font-weight:500;color:#2c3e50;">Requirements Upload (choose per requirement)</label>
 
-              <div class="document-option" onclick="selectDocumentOption('upload')" tabindex="0" role="button" aria-pressed="false">
-                <input type="radio" id="uploadOption" name="document_method" value="upload" required>
-                <label for="uploadOption">Upload Purok Clearance Online</label>
-                <div class="file-upload-container" id="uploadContainer" style="display:none;">
-                  <input type="file" id="purokClearance" name="purok_clearance" class="file-upload-input" accept="image/*,.pdf" aria-describedby="fileUploadHelp">
-                  <label for="purokClearance" class="file-upload-button"><i class="fas fa-upload"></i> Choose File (JPG, PNG, PDF, max 5MB)</label>
-                  <div class="file-upload-name" id="fileName">No file chosen</div>
-                  <div class="error-message" id="fileUploadError">Please upload your purok clearance</div>
-                  <p class="note" id="fileUploadHelp">Maximum file size: 5MB. Accepted formats: JPG, PNG, PDF</p>
+              <!-- Purok Clearance -->
+              <div class="req-block" data-key="purok_clearance">
+                <div class="req-title"><i class="fas fa-file"></i> Purok Clearance*</div>
+                <div class="req-method">
+                  <label><input type="radio" name="req_method[purok_clearance]" value="upload" required> Upload now</label>
+                  <label><input type="radio" name="req_method[purok_clearance]" value="hall"> Bring to Hall</label>
+                </div>
+                <div class="file-upload-container" id="req_ui_purok_clearance" style="display:none">
+                  <input type="file" id="req_purok_clearance" name="requirements[purok_clearance]" class="file-upload-input" accept="image/*,.pdf" aria-describedby="purokHelp">
+                  <label for="req_purok_clearance" class="file-upload-button"><i class="fas fa-upload"></i> Choose File (JPG, PNG, PDF, max 5MB)</label>
+                  <div class="file-upload-name" id="name_req_purok_clearance">No file chosen</div>
+                  <div class="error-message" id="err_req_purok_clearance">Please upload your Purok Clearance</div>
+                  <p class="note" id="purokHelp">Maximum file size: 5MB. Accepted formats: JPG, PNG, PDF</p>
                 </div>
               </div>
 
-              <div class="document-option" onclick="selectDocumentOption('hall')" tabindex="0" role="button" aria-pressed="false">
-                <input type="radio" id="hallOption" name="document_method" value="hall">
-                <label for="hallOption">Bring Purok Clearance to Barangay Hall</label>
-                <div class="bring-to-hall-info" id="hallInfo" style="display:none;">
-                  <p><i class="fas fa-info-circle"></i> Please bring your purok clearance to:</p>
-                  <p><strong>Barangay Bula Hall</strong></p>
-                  <p>Open Monday–Friday, 8:00 AM – 5:00 PM</p>
-                  <p>Saturday, 8:00 AM – 12:00 PM</p>
+              <!-- Valid ID -->
+              <div class="req-block" data-key="valid_id">
+                <div class="req-title"><i class="fas fa-id-card"></i> Valid ID (Government-issued)*</div>
+                <div class="req-method">
+                  <label><input type="radio" name="req_method[valid_id]" value="upload" required> Upload now</label>
+                  <label><input type="radio" name="req_method[valid_id]" value="hall"> Bring to Hall</label>
+                </div>
+                <div class="file-upload-container" id="req_ui_valid_id" style="display:none">
+                  <input type="file" id="req_valid_id" name="requirements[valid_id]" class="file-upload-input" accept="image/*,.pdf" aria-describedby="validIdHelp">
+                  <label for="req_valid_id" class="file-upload-button"><i class="fas fa-upload"></i> Choose File (JPG, PNG, PDF, max 5MB)</label>
+                  <div class="file-upload-name" id="name_req_valid_id">No file chosen</div>
+                  <div class="error-message" id="err_req_valid_id">Please upload a Valid ID</div>
+                  <p class="note" id="validIdHelp">Maximum file size: 5MB. Accepted formats: JPG, PNG, PDF</p>
                 </div>
               </div>
 
-              <div class="error-message" id="documentMethodError">Please select a submission method</div>
+              <div class="error-message" id="documentMethodError">Please select a method for each requirement</div>
             </div>
 
             <div class="processing-info">
@@ -208,6 +218,40 @@ try {
 
             <div class="nav-buttons">
               <button type="button" class="btn btn-secondary" id="prevBtn2"><i class="fas fa-arrow-left"></i> Previous</button>
+              <button type="button" class="btn" id="nextBtn3">Next <i class="fas fa-arrow-right"></i></button>
+            </div>
+          </div>
+
+          <!-- Section 4: Review & Submit -->
+          <div class="form-section" id="section4" aria-labelledby="step4">
+            <div class="review-wrap">
+              <h4><i class="fas fa-eye"></i> Review your request</h4>
+
+              <div class="review-grid">
+                <div class="review-card">
+                  <h5>Personal Information</h5>
+                  <ul class="review-list" id="revPersonal"></ul>
+                </div>
+
+                <div class="review-card">
+                  <h5>Purpose & Copies</h5>
+                  <ul class="review-list" id="revPurpose"></ul>
+                </div>
+
+                <div class="review-card">
+                  <h5>Requirements</h5>
+                  <div id="revReqs" class="review-reqs"></div>
+                </div>
+
+                <div class="review-card total">
+                  <h5>Total Fee</h5>
+                  <div class="fee-big">₱<span id="revTotal">0.00</span></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="nav-buttons">
+              <button type="button" class="btn btn-secondary" id="prevBtn3"><i class="fas fa-arrow-left"></i> Previous</button>
               <button type="submit" id="submitApplication" class="btn"><i class="fas fa-paper-plane"></i> Submit Application</button>
             </div>
           </div>
@@ -238,7 +282,7 @@ try {
     </div>
   </div>
 
-  <!-- Pretty Confirm Modal (Cancel) -->
+  <!-- Pretty Confirm (Cancel) -->
   <div id="uiConfirm" class="ui-confirm" aria-hidden="true">
     <div class="ui-confirm__dialog" role="dialog" aria-modal="true" aria-labelledby="uiConfirmTitle">
       <div class="ui-confirm__icon"><i class="fas fa-circle-exclamation"></i></div>
@@ -251,7 +295,16 @@ try {
     </div>
   </div>
 
-  <script>window.CED_PRICE = <?= json_encode((float)$CED_PRICE) ?>;</script>
-  <script src="./script/cedula.js?v=3"></script>
+  <!-- Page constants for JS -->
+  <script>
+    window.PRICE_TYPE  = 'cedula';
+    window.CED_PRICE   = <?= json_encode((float)$CED_PRICE) ?>;
+    window.REQUIRED_REQS = [
+      { key: 'purok_clearance', label: 'Purok Clearance' },
+      { key: 'valid_id',        label: 'Valid ID (Government-issued)' }
+    ];
+  </script>
+
+  <script src="./script/cedula.js?v=4"></script>
 </body>
 </html>

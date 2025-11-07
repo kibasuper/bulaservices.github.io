@@ -324,10 +324,7 @@ function renderRequests(filterSelectVal = "all", searchTerm = "", sortSelectVal 
 
 function renderActionsByStatus(s) {
   if (s === 'completed') {
-    return `
-      <button class="action-btn primary"><i class="fas fa-print"></i> Print Confirmation</button>
-      <button class="action-btn secondary"><i class="fas fa-download"></i> Download Copy</button>
-    `;
+    return `<div class="hint">Your request has been completed successfully.</div>`;
   }
   if (s === 'rejected') {
     return `<div class="hint">This request was rejected. You may submit a new request.</div>`;
@@ -349,7 +346,6 @@ function renderActionsByStatus(s) {
   }
   return `<div class="hint">Your request is awaiting approval by barangay staff.</div>`;
 }
-
 // ---------------- UI hooks ----------------
 document.addEventListener('DOMContentLoaded', () => {
   loadRequests().catch(err => {

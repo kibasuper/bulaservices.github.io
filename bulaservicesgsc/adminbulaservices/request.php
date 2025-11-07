@@ -21,7 +21,7 @@ try {
     $stmt->execute();
     $requests = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
-    die("Error fetching requests: " . $e->getMessage());
+    die('Error fetching requests: ' . $e->getMessage());
 }
 ?>
 <!DOCTYPE html>
@@ -34,73 +34,77 @@ try {
 <link rel="stylesheet" href="./css/request.css">
 </head>
 <body>
- <!-- Header -->
+  <!-- Header -->
   <header class="app-header">
     <div class="container header-content">
       <h1><i class="fas fa-file"></i> Certificate Request Approval</h1>
       <div class="header-actions">
         <a href="admin.php" class="dashboard-link"><i class="fas fa-arrow-left"></i> Dashboard</a>
+      </div>
     </div>
   </header>
 
-<main class="dashboard-container container">
+  <main class="dashboard-container container">
     <section class="requests-list-section">
-        <div class="section-header">
-            <h2 class="section-title">All Requests</h2>
-            <div class="section-actions">
-                <button class="action-btn refresh-btn" onclick="refreshPage()">
-                    <i class="fas fa-sync-alt"></i> Refresh
-                </button>
-                <button class="action-btn new-transaction-btn" onclick="newTransaction()">
-                    <i class="fas fa-plus"></i> New Transaction
-                </button>
-            </div>
+      <div class="section-header">
+        <h2 class="section-title">All Requests</h2>
+        <div class="section-actions">
+          <button class="action-btn refresh-btn" onclick="refreshPage()">
+            <i class="fas fa-sync-alt"></i> Refresh
+          </button>
         </div>
-        <table class="requests-table">
-            <thead>
-                <tr>
-                    <th>Transaction No</th>
-                    <th>Requested By</th>
-                    <th>Certificate Type</th>
-                    <th>Purpose</th>
-                    <th>Date Requested</th>
-                    <th>Status</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php foreach ($requests as $r): ?>
-                <tr>
-                    <td class="transaction-code"><?= htmlspecialchars($r['reference_number']) ?></td>
-                    <td><?= htmlspecialchars($r['first_name'] . ' ' . $r['last_name']) ?></td>
-                    <td><?= ucfirst(str_replace('_', ' ', $r['service_type'])) ?></td>
-                    <td><?= htmlspecialchars($r['purpose']) ?></td>
-                    <td><?= date('M d, Y h:i A', strtotime($r['request_date'])) ?></td>
-                    <td><span class="status-badge status-<?= strtolower($r['status']) ?>"><?= ucfirst($r['status']) ?></span></td>
-                    <td>
-                        <button class="action-btn review-btn" onclick="reviewRequest('<?= htmlspecialchars($r['reference_number']) ?>')">
-                            <i class="fas fa-eye"></i> Review
-                        </button>
-                    </td>
-                </tr>
-                <?php endforeach; ?>
-            </tbody>
-        </table>
+      </div>
+      <table class="requests-table">
+        <thead>
+          <tr>
+            <th>Transaction No</th>
+            <th>Requested By</th>
+            <th>Certificate Type</th>
+            <th>Purpose</th>
+            <th>Date Requested</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="requestsTableBody">
+          <?php foreach ($requests as $r): ?>
+          <tr>
+            <td class="transaction-code"><?= htmlspecialchars($r['reference_number']) ?></td>
+            <td><?= htmlspecialchars($r['first_name'] . ' ' . $r['last_name']) ?></td>
+            <td><?= ucfirst(str_replace('_', ' ', $r['service_type'])) ?></td>
+            <td><?= htmlspecialchars($r['purpose']) ?></td>
+            <td><?= date('M d, Y h:i A', strtotime($r['request_date'])) ?></td>
+            <td><span class="status-badge status-<?= strtolower($r['status']) ?>"><?= ucfirst($r['status']) ?></span></td>
+            <td>
+              <button class="action-btn review-btn" onclick="reviewRequest('<?= htmlspecialchars($r['reference_number']) ?>')">
+                <i class="fas fa-eye"></i> Review
+              </button>
+            </td>
+          </tr>
+          <?php endforeach; ?>
+        </tbody>
+      </table>
     </section>
-</main>
+  </main>
 
-<!-- Review Modal -->
-<div id="reviewModal" class="modal"></div>
+  <!-- Review Modal -->
+  <div id="reviewModal" class="modal"></div>
 
-<!-- Success Modal -->
-<div id="successModal" class="modal">
+  <!-- Success Modal -->
+  <div id="successModal" class="modal">
     <div class="modal-content">
-        <h3 id="successTitle"></h3>
-        <p id="successMessage"></p>
-        <button onclick="document.getElementById('successModal').classList.remove('active')">Close</button>
+      <h3 id="successTitle"></h3>
+      <p id="successMessage"></p>
+      <button onclick="document.getElementById('successModal').classList.remove('active')">Close</button>
     </div>
-</div>
+  </div>
 
-<script src="./script/request.js"></script>
+  <!-- Image Lightbox -->
+  <div id="imageLightbox" class="img-lightbox" aria-hidden="true">
+    <button type="button" class="img-close" aria-label="Close preview">&times;</button>
+    <img id="lightboxImg" alt="Attachment preview">
+  </div>
+
+  <script src="./script/request.js"></script>
 </body>
 </html>

@@ -1,14 +1,6 @@
 <?php
 declare(strict_types=1);
 
-/**
- * certificate_functions.php
- * Routes:
- *   ?action=get_user_info   GET  -> { success, data }
- *   ?action=get_price       GET  -> { success, type_code, price }
- *   ?action=submit_request  POST -> { success, reference_number, amount, message }
- */
-
 error_reporting(E_ALL);
 ini_set('display_errors', '0');
 ini_set('log_errors', '1');
@@ -69,20 +61,10 @@ function db_get_user_type(PDO $db, int $userId): ?string {
 }
 
 final class CertificateRequest {
-  /** ONLY the supported services — "other" removed */
   private const ALLOWED_SERVICES = [
-    'barangay_clearance',
-    'business_permit',
-    'indigency',
-    'residency',
-    'cedula',
-    'ivs',
-    'gym',
-    'low_income',
-    'proof_income',
+    'barangay_clearance','business_permit','indigency','residency','cedula','ivs','gym','low_income','proof_income',
   ];
 
-  /** Map service_requests.service_type → certificate_pricing.type_code */
   private const SERVICE_TO_TYPECODE = [
     'barangay_clearance' => 'bc',
     'business_permit'    => 'bp',
@@ -95,7 +77,6 @@ final class CertificateRequest {
     'gym'                => 'gym',
   ];
 
-  /** Prefix for reference numbers */
   private const REF_PREFIX = [
     'barangay_clearance' => 'BC',
     'business_permit'    => 'BP',
@@ -108,17 +89,8 @@ final class CertificateRequest {
     'gym'                => 'GYM',
   ];
 
-  /** Safe fallbacks if DB row missing */
-  private const PRICE_FALLBACK = [
-    'bc'        => 80.00,
-    'bp'        => 150.00,
-    'indigency' => 50.00,
-    'residency' => 75.00,
-    'cedula'    => 5.00,
-    'ivs'       => 100.00,
-    'lic'       => 80.00,    // low income
-    'pic'       => 100.00,   // proof of income
-    'gym'       => 0.00,
+  public const PRICE_FALLBACK = [
+    'bc'=>80.00,'bp'=>150.00,'indigency'=>50.00,'residency'=>75.00,'cedula'=>5.00,'ivs'=>100.00,'lic'=>80.00,'pic'=>100.00,'gym'=>0.00,
   ];
 
   private PDO $db;
@@ -126,60 +98,26 @@ final class CertificateRequest {
 
   public function __construct() {
     $this->db = getDBConnection();
-    if ($this->db instanceof PDO) {
-      $this->db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-    }
+    if ($this->db instanceof PDO) $this->db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     $this->userId = $_SESSION['user_id'] ?? null;
   }
 
-  /** Normalize any input to a canonical service_type */
   private function normalizeService(string $raw): string {
     $val = strtolower(trim($raw));
-    // Delete spaces/underscores to match human labels too
     $key = preg_replace('/[\s_]+/', '', $val);
-
-    // Accept a rich set of aliases (labels, shorthand)
     $map = [
-      'bc'                  => 'barangay_clearance',
-      'barangayclearance'   => 'barangay_clearance',
-      'barangay_clearance'  => 'barangay_clearance',
-      'barangay clearance'  => 'barangay_clearance',
-
-      'bp'                  => 'business_permit',
-      'businesspermit'      => 'business_permit',
-      'business_permit'     => 'business_permit',
-      'business permit'     => 'business_permit',
-
-      'indigency'           => 'indigency',
-      'certificateofindigency' => 'indigency',
-
-      'residency'           => 'residency',
-      'certificateofresidency' => 'residency',
-
-      'cedula'              => 'cedula',
-      'ctc'                 => 'cedula',
-      'communitytaxcertificate' => 'cedula',
-
-      'ivs'                 => 'ivs',
-
-      'lowincome'           => 'low_income',
-      'low_income'          => 'low_income',
-      'lic'                 => 'low_income',
-
-      'proofincome'         => 'proof_income',
-      'proof_income'        => 'proof_income',
-      'pic'                 => 'proof_income',
-
-      'gym'                 => 'gym',
-      'gymreservation'      => 'gym',
+      'bc'=>'barangay_clearance','barangayclearance'=>'barangay_clearance','barangay_clearance'=>'barangay_clearance','barangay clearance'=>'barangay_clearance',
+      'bp'=>'business_permit','businesspermit'=>'business_permit','business_permit'=>'business_permit','business permit'=>'business_permit',
+      'indigency'=>'indigency','certificateofindigency'=>'indigency',
+      'residency'=>'residency','certificateofresidency'=>'residency',
+      'cedula'=>'cedula','ctc'=>'cedula','communitytaxcertificate'=>'cedula',
+      'ivs'=>'ivs',
+      'lowincome'=>'low_income','low_income'=>'low_income','lic'=>'low_income',
+      'proofincome'=>'proof_income','proof_income'=>'proof_income','pic'=>'proof_income',
+      'gym'=>'gym','gymreservation'=>'gym',
     ];
-
     if (isset($map[$key])) return $map[$key];
-
-    // If the raw already matches the exact canonical key, keep it
     if (in_array($val, self::ALLOWED_SERVICES, true)) return $val;
-
-    // Unknown -> reject (do NOT fallback to "other")
     throw new InvalidArgumentException("Unsupported service type '{$raw}'.");
   }
 
@@ -207,7 +145,7 @@ final class CertificateRequest {
   }
 
   private function generateReferenceNumber(string $serviceType): string {
-    $rand = strtoupper(bin2hex(random_bytes(2))); // 4 hex chars
+    $rand = strtoupper(bin2hex(random_bytes(2)));
     return $this->refPrefix($serviceType) . '-' . date('Ymd') . '-' . $rand;
   }
 
@@ -233,54 +171,60 @@ final class CertificateRequest {
     }
   }
 
-  private function handleFileUpload(?array $file): ?string {
-    if (!$file || !isset($file['tmp_name']) || $file['error'] !== UPLOAD_ERR_OK) return null;
+  // helper to extract a single file from a nested $_FILES['requirements'] array
+  private function pickFile(array $files, string $key): ?array {
+    if (!isset($files['name'][$key])) return null;
+    return [
+      'name'     => $files['name'][$key]     ?? null,
+      'type'     => $files['type'][$key]     ?? null,
+      'tmp_name' => $files['tmp_name'][$key] ?? null,
+      'error'    => $files['error'][$key]    ?? UPLOAD_ERR_NO_FILE,
+      'size'     => $files['size'][$key]     ?? 0,
+    ];
+  }
+
+  private function handleRequirementUpload(?array $file, string $serviceType, string $reqKey): ?array {
+    if (!$file || !isset($file['tmp_name'])) return null;
+    if ($file['error'] === UPLOAD_ERR_NO_FILE) return null;
+    if ($file['error'] !== UPLOAD_ERR_OK) throw new RuntimeException("Upload failed for $reqKey (code {$file['error']}).");
 
     $size = (int)($file['size'] ?? 0);
-    if ($size <= 0 || $size > 5 * 1024 * 1024) {
-      throw new RuntimeException("File size exceeds 5MB limit.");
-    }
+    if ($size <= 0 || $size > 5 * 1024 * 1024) throw new RuntimeException("$reqKey exceeds 5MB limit.");
 
     $mime = 'application/octet-stream';
     if (class_exists('finfo')) {
       $finfo = new finfo(FILEINFO_MIME_TYPE);
-      $mime  = $finfo->file($file['tmp_name']) ?: $mime;
+      $mime  = $finfo->file($file['tmp_name']) ?: ($file['type'] ?? 'application/octet-stream');
     }
-    $allowed = ['image/jpeg', 'image/png', 'application/pdf'];
-    if (!in_array($mime, $allowed, true)) {
-      throw new RuntimeException("Invalid file type. Only JPG, PNG, or PDF allowed.");
-    }
+    $allowed = ['image/jpeg','image/png','application/pdf'];
+    if (!in_array($mime, $allowed, true)) throw new RuntimeException("$reqKey must be JPG, PNG, or PDF.");
 
     $subdir = date('Y/m');
-    $uploadDir = __DIR__ . "/../uploads/purok_clearance/$subdir/";
+    $uploadDir = __DIR__ . "/../uploads/requirements/{$serviceType}/{$reqKey}/{$subdir}/";
     if (!is_dir($uploadDir) && !@mkdir($uploadDir, 0755, true) && !is_dir($uploadDir)) {
-      throw new RuntimeException("Failed to create upload directory.");
+      throw new RuntimeException("Failed to create upload directory for $reqKey.");
     }
 
-    $extMap = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'application/pdf' => 'pdf'];
+    $extMap = ['image/jpeg'=>'jpg','image/png'=>'png','application/pdf'=>'pdf'];
     $ext = $extMap[$mime] ?? 'bin';
-    $safeName = 'purok_' . bin2hex(random_bytes(8)) . '.' . $ext;
+    $safeName = $reqKey . '_' . bin2hex(random_bytes(8)) . '.' . $ext;
     $target = $uploadDir . $safeName;
 
     if (!@move_uploaded_file($file['tmp_name'], $target)) {
-      throw new RuntimeException("Failed to save uploaded file.");
+      throw new RuntimeException("Failed to save uploaded file for $reqKey.");
     }
 
-    return "uploads/purok_clearance/$subdir/$safeName";
+    $publicPath = "uploads/requirements/{$serviceType}/{$reqKey}/{$subdir}/{$safeName}";
+    return ['path' => $publicPath, 'mime' => $mime, 'size' => $size, 'original' => (string)($file['name'] ?? '')];
   }
 
   public function submitRequest(array $data, array $files): array {
-    if (!$this->userId) {
-      return ['success' => false, 'message' => 'User not authenticated'];
-    }
+    if (!$this->userId) return ['success' => false, 'message' => 'User not authenticated'];
 
-    // Normalize & validate service type (throws on unknown)
+    // Normalize service
     $rawService = (string)($data['service_type'] ?? '');
-    try {
-      $service = $this->normalizeService($rawService);
-    } catch (InvalidArgumentException $e) {
-      return ['success' => false, 'message' => $e->getMessage()];
-    }
+    try { $service = $this->normalizeService($rawService); }
+    catch (InvalidArgumentException $e) { return ['success' => false, 'message' => $e->getMessage()]; }
 
     // outsiders may submit ONLY 'gym'
     $uType = db_get_user_type($this->db, (int)$this->userId) ?? '';
@@ -290,55 +234,108 @@ final class CertificateRequest {
 
     $purpose = trim((string)($data['purpose'] ?? ''));
     $purposeDetails = trim((string)($data['purpose_details'] ?? ''));
-    $copies = max(1, (int)($data['copies'] ?? 1));
-    if ($copies > 10) $copies = 10;
+    $copies = max(1, (int)($data['copies'] ?? 1)); if ($copies > 10) $copies = 10;
 
-    $docMethod = (string)($data['document_method'] ?? '');
-    if (!in_array($docMethod, ['upload','hall'], true)) {
-      return ['success' => false, 'message' => 'Please choose a submission method (upload or hall).'];
+    if ($purpose === '') return ['success' => false, 'message' => 'Missing required field: purpose'];
+    if ($purpose === 'Other' && $purposeDetails === '') return ['success' => false, 'message' => 'Please specify your purpose.'];
+
+    // === NEW: per-requirement methods + uploads ===
+    // Frontend sends: req_method[key] = upload|hall, files in requirements[key]
+    $reqMethods = is_array($data['req_method'] ?? null) ? $data['req_method'] : [];
+    $reqFiles   = is_array($files['requirements'] ?? null) ? $files['requirements'] : [];
+
+    // Define required keys for the selected service (extensible later)
+    $requiredKeys = [];
+    if ($service === 'barangay_clearance') {
+      $requiredKeys = ['purok_clearance', 'valid_id', 'cedula'];
     }
-    if ($purpose === '') {
-      return ['success' => false, 'message' => 'Missing required field: purpose'];
+        //Business Permit required docs
+    if ($service === 'business_permit') {
+      $requiredKeys = ['purok_clearance', 'valid_id', 'business_docs'];
     }
-    if ($purpose === 'Other' && $purposeDetails === '') {
-      return ['success' => false, 'message' => 'Please specify your purpose.'];
+    if ($service === 'cedula') {
+      $requiredKeys = ['purok_clearance', 'valid_id'];
+    }
+    if ($service === 'ivs') {
+    $requiredKeys = ['purok_clearance', 'valid_id'];
+    }
+    if ($service === 'indigency') {
+    $requiredKeys = ['purok_clearance','valid_id','proof_of_residence','cedula'];
+    }
+    if ($service === 'residency') {
+    $requiredKeys = ['purok_clearance','valid_id','proof_of_residence','cedula'];
+    }
+    if ($service === 'low_income') {
+    $requiredKeys = ['purok_clearance','valid_id','proof_of_income'];
     }
 
-    // Optional upload (only when method=upload)
-    $documentPath = null;
-    try {
-      if ($docMethod === 'upload') {
-        $documentPath = $this->handleFileUpload($files['purok_clearance'] ?? null);
+    // Validate presence of a method per requirement
+    foreach ($requiredKeys as $k) {
+      $m = strtolower((string)($reqMethods[$k] ?? ''));
+      if (!in_array($m, ['upload','hall'], true)) {
+        return ['success' => false, 'message' => "Please choose a method for $k."];
       }
-    } catch (Throwable $e) {
-      error_log("[UPLOAD] " . $e->getMessage());
-      return ['success' => false, 'message' => $e->getMessage()];
+      if ($m === 'upload') {
+        $one = $this->pickFile($reqFiles, $k);
+        if (!$one || ($one['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+          return ['success' => false, 'message' => "Please upload a file for $k."];
+        }
+      }
     }
 
-    // Pricing & reference
-    try {
-      $typeCode = $this->typeToCode($service);
-    } catch (InvalidArgumentException $e) {
-      return ['success' => false, 'message' => $e->getMessage()];
+    // Handle uploads and assemble bundle
+    $requirementsBundle = [];
+    $legacyMethod = 'none';
+    $legacyPath   = null;
+
+    foreach ($requiredKeys as $k) {
+      $method = strtolower((string)($reqMethods[$k] ?? 'hall'));
+      if ($method === 'upload') {
+        $one = $this->pickFile($reqFiles, $k);
+        try {
+          $meta = $this->handleRequirementUpload($one, $service, $k);
+          if ($meta !== null) {
+            $requirementsBundle[$k] = array_merge(['method' => 'upload'], $meta);
+            // legacy bridge using purok_clearance
+            if ($k === 'purok_clearance') { $legacyMethod = 'upload'; $legacyPath = $meta['path'] ?? null; }
+          } else {
+            $requirementsBundle[$k] = ['method' => 'upload']; // no path (shouldn’t happen)
+          }
+        } catch (Throwable $e) {
+          error_log("[UPLOAD:$k] " . $e->getMessage());
+          return ['success' => false, 'message' => $e->getMessage()];
+        }
+      } else {
+        $requirementsBundle[$k] = ['method' => 'hall'];
+        if ($k === 'purok_clearance' && $legacyMethod === 'none') $legacyMethod = 'hall';
+      }
     }
+
+    // Determine price & reference
+    try { $typeCode = $this->typeToCode($service); }
+    catch (InvalidArgumentException $e) { return ['success' => false, 'message' => $e->getMessage()]; }
+
     $price  = $this->getPrice($typeCode);
-    if ($price <= 0) {
-      // For fixed services, zero price is not acceptable
-      return ['success' => false, 'message' => 'Pricing for this service is not configured. Please contact the administrator.'];
-    }
+    if ($price <= 0) return ['success' => false, 'message' => 'Pricing for this service is not configured. Please contact the administrator.'];
     $amount = $copies * $price;
     $ref    = $this->generateReferenceNumber($service);
 
-    // Optional extra_data (Business Permit only)
-    $extra = null;
+    // Optional extra_data service-specific block
+    $extra = [
+      'requirements' => $requirementsBundle,
+    ];
     if ($service === 'business_permit') {
       $bn = trim((string)($data['business_name'] ?? ''));
       $bt = trim((string)($data['business_type'] ?? ''));
       $ba = trim((string)($data['business_address'] ?? ''));
       if ($bn !== '' || $bt !== '' || $ba !== '') {
-        $extra = ['business_name' => $bn, 'business_type' => $bt, 'business_address' => $ba];
+        $extra['business'] = ['business_name' => $bn, 'business_type' => $bt, 'business_address' => $ba];
       }
     }
+
+    // Legacy columns for compatibility
+    $documentMethod = in_array($legacyMethod, ['upload','hall'], true) ? $legacyMethod : 'none';
+    $documentPath   = ($documentMethod === 'upload' && $legacyPath) ? $legacyPath : null;
 
     // Insert
     try {
@@ -362,17 +359,10 @@ final class CertificateRequest {
       }
       $stmt->bindValue(':copies', $copies, PDO::PARAM_INT);
       $stmt->bindValue(':amount', $amount);
-      $stmt->bindValue(':dmethod', $docMethod, PDO::PARAM_STR);
-      if ($documentPath) {
-        $stmt->bindValue(':dpath', $documentPath, PDO::PARAM_STR);
-      } else {
-        $stmt->bindValue(':dpath', null, PDO::PARAM_NULL);
-      }
-      if ($extra !== null) {
-        $stmt->bindValue(':extra', json_encode($extra, JSON_UNESCAPED_UNICODE), PDO::PARAM_STR);
-      } else {
-        $stmt->bindValue(':extra', null, PDO::PARAM_NULL);
-      }
+      $stmt->bindValue(':dmethod', $documentMethod, PDO::PARAM_STR);
+      if ($documentPath) $stmt->bindValue(':dpath', $documentPath, PDO::PARAM_STR);
+      else               $stmt->bindValue(':dpath', null, PDO::PARAM_NULL);
+      $stmt->bindValue(':extra', json_encode($extra, JSON_UNESCAPED_UNICODE), PDO::PARAM_STR);
       $stmt->execute();
     } catch (Throwable $e) {
       error_log("[DB][insert] {$e->getMessage()} | service=$service ref=$ref amount=$amount");
@@ -401,32 +391,19 @@ if (isset($_GET['action'])) {
 
   if ($action === 'get_price') {
     if (!mustBeLoggedIn()) { send_json(['success' => false, 'message' => 'Not authenticated'], 401); exit; }
-
     $type = strtolower(trim((string)($_GET['type'] ?? '')));
     $aliases = [
-      'bc' => 'bc', 'bp' => 'bp', 'ivs' => 'ivs', 'cedula' => 'cedula',
-      'indigency' => 'indigency', 'residency' => 'residency', 'lic' => 'lic', 'pic' => 'pic', 'gym' => 'gym',
-      'barangay_clearance' => 'bc',
-      'business_permit'    => 'bp',
-      'low_income'         => 'lic',
-      'proof_income'       => 'pic',
+      'bc' => 'bc','bp'=>'bp','ivs'=>'ivs','cedula'=>'cedula','indigency'=>'indigency','residency'=>'residency','lic'=>'lic','pic'=>'pic','gym'=>'gym',
+      'barangay_clearance'=>'bc','business_permit'=>'bp','low_income'=>'lic','proof_income'=>'pic',
     ];
     $typeCode = $aliases[$type] ?? $type;
-
     try {
-      $db = getDBConnection();
-      $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-
+      $db = getDBConnection(); $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
       $stmt = $db->prepare("SELECT price FROM certificate_pricing WHERE type_code = ? LIMIT 1");
       $stmt->execute([$typeCode]);
       $row = $stmt->fetch(PDO::FETCH_ASSOC);
       $price = $row ? (float)$row['price'] : (CertificateRequest::PRICE_FALLBACK[$typeCode] ?? 0.0);
-
-      if ($price <= 0) {
-        send_json(['success' => false, 'message' => 'Price not configured for type_code='.$typeCode], 404);
-        exit;
-      }
-
+      if ($price <= 0) { send_json(['success' => false, 'message' => 'Price not configured for type_code='.$typeCode], 404); exit; }
       send_json(['success' => true, 'type_code' => $typeCode, 'price' => $price]);
     } catch (Throwable $e) {
       error_log('[get_price] ' . $e->getMessage());
@@ -454,4 +431,3 @@ if (isset($_GET['action'])) {
   send_json(['success' => false, 'message' => 'Invalid action'], 400);
   exit;
 }
-// included without action → no output

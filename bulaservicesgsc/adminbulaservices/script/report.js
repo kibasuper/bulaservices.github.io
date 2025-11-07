@@ -1,19 +1,17 @@
-// script/report.js — per-section filters, daily views, outsiders count, TX history
+// script/report.js — per-section filters, daily views, outsiders count, demographics segmentation
 document.addEventListener('DOMContentLoaded', () => {
   if (typeof ChartDataLabels !== 'undefined') Chart.register(ChartDataLabels);
 
-  // global date pickers (summary cards period)
+  // global and local date pickers
   if (typeof flatpickr !== 'undefined') {
     flatpickr('#dateRangeStart', { dateFormat: 'Y-m-d', defaultDate: new Date(new Date().setMonth(new Date().getMonth() - 1)) });
     flatpickr('#dateRangeEnd',   { dateFormat: 'Y-m-d', defaultDate: new Date() });
 
-    // local per-section pickers
-    flatpickr('#reqDateStart', { dateFormat: 'Y-m-d' });
-    flatpickr('#reqDateEnd',   { dateFormat: 'Y-m-d' });
+    flatpickr('#reqDateStart',   { dateFormat: 'Y-m-d' });
+    flatpickr('#reqDateEnd',     { dateFormat: 'Y-m-d' });
     flatpickr('#salesDateStart', { dateFormat: 'Y-m-d' });
     flatpickr('#salesDateEnd',   { dateFormat: 'Y-m-d' });
-    flatpickr('#txDateStart',    { dateFormat: 'Y-m-d' });
-    flatpickr('#txDateEnd',      { dateFormat: 'Y-m-d' });
+    // note: txDateStart/txDateEnd removed because Transaction History is removed
   }
 
   let requestsChart, requestsPieChart, ageChart, genderChart;
@@ -22,6 +20,14 @@ document.addEventListener('DOMContentLoaded', () => {
   const $ = (id) => document.getElementById(id);
   const hasEl = (id) => !!$(id);
   const peso = (n) => `₱${Number(n || 0).toLocaleString()}`;
+
+  // friendly labels for statuses (kept for Requests section display)
+  const STATUS_LABEL = {
+    approved: 'Complete',
+    rejected: 'Rejected',
+    pending:  'Pending',
+    Paid:     'Paid'
+  };
 
   const CANON_TYPES = [
     'Barangay Clearance',
@@ -56,7 +62,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function fetchReport(params) {
     const qs = new URLSearchParams(params);
-    const res = await fetch(`./server/report_api.php?${qs.toString()}`, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } });
+    const res = await fetch(`./server/report_api.php?${qs.toString()}`, {
+      credentials: 'same-origin',
+      headers: { 'Accept': 'application/json' }
+    });
+    const ctype = res.headers.get('content-type') || '';
+    const data = ctype.includes('application/json') ? await res.json() : { ok:false, error: await res.text() };
+    if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    return data;
+  }
+
+  // demographics filter fetch
+  async function fetchDemoFilter(params) {
+    const qs = new URLSearchParams(params);
+    const res = await fetch(`./server/report_api.php?${qs.toString()}`, {
+      credentials: 'same-origin',
+      headers: { 'Accept': 'application/json' }
+    });
     const ctype = res.headers.get('content-type') || '';
     const data = ctype.includes('application/json') ? await res.json() : { ok:false, error: await res.text() };
     if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
@@ -71,14 +93,14 @@ document.addEventListener('DOMContentLoaded', () => {
     if (hasEl('registeredResidents')) $('registeredResidents').textContent = Number(api?.summary?.registeredResidents ?? 0).toLocaleString();
     if (hasEl('registeredOutsiders')) $('registeredOutsiders').textContent = Number(api?.summary?.registeredOutsiders ?? 0).toLocaleString();
 
-    // cosmetic arrows
+    // cosmetic arrows in summary cards
     setChange('requestsChange', true);
     setChange('approvalsChange', false);
     setChange('revenueChange', true);
     setChange('residentsChange', true);
   }
 
-  /* ---------------- REQUESTS (per-section filters) ---------------- */
+  /* ---------------- REQUESTS ---------------- */
   function renderRequestsSummary(byType) {
     const tbody = $('requestsTableBody'); if (!tbody) return;
     const labels = Object.keys(byType).length ? Object.keys(byType) : CANON_TYPES;
@@ -112,6 +134,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       });
     }
+
     if (hasEl('requestsPieChart')) {
       const ctx = $('requestsPieChart').getContext('2d');
       if (requestsPieChart) requestsPieChart.destroy();
@@ -126,52 +149,56 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function renderRequestsDaily(daily, selectedServiceCanon) {
-    // Build table header for daily view
     const thead = $('requestsTableHead');
     const tbody = $('requestsTableBody');
     if (!thead || !tbody) return;
 
     if (selectedServiceCanon) {
-      thead.innerHTML = `<tr><th>Date</th><th>Total</th><th>Approved</th><th>Rejected</th><th>Pending</th></tr>`;
-      tbody.innerHTML = '';
-      Object.keys(daily).sort().forEach(ymd => {
-        const bySvc = daily[ymd] || {};
-        const r = bySvc[selectedServiceCanon] || { total:0, approved:0, rejected:0, pending:0 };
-        const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${ymd}</td><td>${r.total||0}</td><td>${r.approved||0}</td><td>${r.rejected||0}</td><td>${r.pending||0}</td>`;
-        tbody.appendChild(tr);
-      });
-    } else {
-      thead.innerHTML = `<tr><th>Date</th><th>Service Type</th><th>Total</th><th>Approved</th><th>Rejected</th><th>Pending</th></tr>`;
-      tbody.innerHTML = '';
-      Object.keys(daily).sort().forEach(ymd => {
-        const bySvc = daily[ymd] || {};
-        Object.keys(bySvc).forEach(svc => {
-          const r = bySvc[svc] || { total:0, approved:0, rejected:0, pending:0 };
+        thead.innerHTML = `<tr><th>Date</th><th>Total</th><th>Approved</th><th>Rejected</th><th>Pending</th></tr>`;
+        tbody.innerHTML = '';
+        Object.keys(daily).sort().forEach(ymd => {
+          const bySvc = daily[ymd] || {};
+          const r = bySvc[selectedServiceCanon] || { total:0, approved:0, rejected:0, pending:0 };
           const tr = document.createElement('tr');
-          tr.innerHTML = `<td>${ymd}</td><td>${svc}</td><td>${r.total||0}</td><td>${r.approved||0}</td><td>${r.rejected||0}</td><td>${r.pending||0}</td>`;
+          tr.innerHTML = `<td>${ymd}</td><td>${r.total||0}</td><td>${r.approved||0}</td><td>${r.rejected||0}</td><td>${r.pending||0}</td>`;
           tbody.appendChild(tr);
         });
-      });
+    } else {
+        thead.innerHTML = `<tr><th>Date</th><th>Service Type</th><th>Total</th><th>Approved</th><th>Rejected</th><th>Pending</th></tr>`;
+        tbody.innerHTML = '';
+        Object.keys(daily).sort().forEach(ymd => {
+          const bySvc = daily[ymd] || {};
+          Object.keys(bySvc).forEach(svc => {
+            const r = bySvc[svc] || { total:0, approved:0, rejected:0, pending:0 };
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td>${ymd}</td><td>${svc}</td><td>${r.total||0}</td><td>${r.approved||0}</td><td>${r.rejected||0}</td><td>${r.pending||0}</td>`;
+            tbody.appendChild(tr);
+          });
+        });
     }
 
-    // Clear charts for daily (simplify v1)
+    // remove charts for daily view
     if (requestsChart) { requestsChart.destroy(); requestsChart = null; }
     if (requestsPieChart) { requestsPieChart.destroy(); requestsPieChart = null; }
   }
 
   /* ---------------- SALES ---------------- */
   function renderSalesSummary(byType, total) {
-    if (!hasEl('financialTableBody')) return;
     const tb = $('financialTableBody');
+    if (!tb) return;
     tb.innerHTML = '';
-    const labels = CANON_TYPES.filter(t => byType[t] != null).concat(Object.keys(byType).filter(t => !CANON_TYPES.includes(t)));
+
+    // force stable order based on CANON_TYPES, then any extras
+    const labels = CANON_TYPES.filter(t => byType[t] != null)
+      .concat(Object.keys(byType).filter(t => !CANON_TYPES.includes(t)));
+
     labels.forEach(l => {
       const amt = Number(byType[l] || 0);
       const tr = document.createElement('tr');
       tr.innerHTML = `<td>${l}</td><td>${peso(amt)}</td>`;
       tb.appendChild(tr);
     });
+
     const tr = document.createElement('tr');
     tr.style.fontWeight = '600';
     tr.innerHTML = `<td>Total</td><td>${peso(total || 0)}</td>`;
@@ -208,93 +235,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  /* ---------------- TX HISTORY ---------------- */
-  function renderTxTable(tx) {
-    const body = $('txTableBody'); if (!body) return;
-    body.innerHTML = '';
-    (tx?.rows || []).forEach(row => {
-      (row.items || []).forEach(it => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td>${row.payment_date || ''}</td>
-          <td>${row.receipt_number || ''}</td>
-          <td>${row.user?.name || row.user?.email || row.user?.id || ''}</td>
-          <td>${row.cashier?.name || row.cashier?.id || ''}</td>
-          <td>${it.service || ''}</td>
-          <td>${it.request_id || ''}</td>
-          <td>${peso(it.amount || 0)}</td>
-        `;
-        body.appendChild(tr);
-      });
-    });
-
-    // pager
-    const page = tx?.page || 1;
-    const size = tx?.page_size || 30;
-    const totalRows = tx?.total_rows || 0;
-    const maxPage = Math.max(1, Math.ceil(totalRows / size));
-    $('txPageInfo').textContent = `Page ${page} of ${maxPage} — ${totalRows} rows`;
-    $('txPrev').disabled = (page <= 1);
-    $('txNext').disabled = (page >= maxPage);
-    $('txPrev').dataset.page = Math.max(1, page - 1);
-    $('txNext').dataset.page = Math.min(maxPage, page + 1);
-  }
-
-  /* ---------------- FETCH + HYDRATE ---------------- */
-  async function loadGlobal(period, s, e) {
-    lastApi = await fetchReport({ period, start_date: s || '', end_date: e || '' });
-    hydrateSummary(lastApi);
-  }
-
-  async function loadRequests() {
-    const view = document.querySelector('#reqViewPills .pill.active')?.dataset.view || 'summary';
-    const code = $('reqServiceSelect').value || '';
-    const s = $('reqDateStart').value || '';
-    const e = $('reqDateEnd').value || '';
-    const params = { req_view: view, req_service: code, req_start_date: s, req_end_date: e };
-    const api = await fetchReport(params);
-
-    // reset header for summary by default
-    $('requestsTableHead').innerHTML = `<tr>
-      <th>Service Type</th><th>Total Requests</th><th>Approved</th><th>Rejected</th><th>Pending</th>
-    </tr>`;
-
-    if (view === 'daily') {
-      const canon = code ? serviceCodeToCanon[code] : '';
-      renderRequestsDaily(api?.requests?.daily || {}, canon || null);
-    } else {
-      renderRequestsSummary(api?.requests?.byType || {});
-    }
-  }
-
-  async function loadSales() {
-    const view = document.querySelector('#salesViewPills .pill.active')?.dataset.view || 'summary';
-    const code = $('salesServiceSelect').value || '';
-    const s = $('salesDateStart').value || '';
-    const e = $('salesDateEnd').value || '';
-    const params = { sales_view: view, sales_service: code, sales_start_date: s, sales_end_date: e };
-    const api = await fetchReport(params);
-
-    if (view === 'daily') {
-      const canon = code ? serviceCodeToCanon[code] : '';
-      renderSalesDaily(api?.sales?.daily || {}, canon || null);
-    } else {
-      renderSalesSummary(api?.sales?.byType || {}, api?.sales?.total || 0);
-    }
-  }
-
-  async function loadTx(page = 1) {
-    const code = $('txServiceSelect').value || '';
-    const cashier = $('txCashier').value || '';
-    const search = $('txSearch').value || '';
-    const s = $('txDateStart').value || '';
-    const e = $('txDateEnd').value || '';
-    const params = { tx_service: code, tx_cashier: cashier, tx_search: search, tx_start_date: s, tx_end_date: e, tx_page: page, tx_page_size: 30 };
-    const api = await fetchReport(params);
-    renderTxTable(api?.transactions || { rows:[], page:1, page_size:30, total_rows:0 });
-  }
-
-  /* ---------------- Demographics ---------------- */
+  /* ---------------- DEMOGRAPHICS CHARTS ---------------- */
   function updateAgeChart(labels, dataMap) {
     const el = $('ageChart'); if (!el) return;
     const ctx = el.getContext('2d');
@@ -306,11 +247,15 @@ document.addEventListener('DOMContentLoaded', () => {
       options: { responsive:true, maintainAspectRatio:false, plugins:{ title:{ display:true, text:'Age Distribution' }, legend:{ position:'right' } } }
     });
   }
+
   function updateGenderChart(labels, dataMap) {
     const el = $('genderChart'); if (!el) return;
     const ctx = el.getContext('2d');
     if (genderChart) genderChart.destroy();
-    const keyed = { Male: Number(dataMap.male || dataMap.Male || 0), Female: Number(dataMap.female || dataMap.Female || 0) };
+    const keyed = {
+      Male: Number(dataMap.male || dataMap.Male || 0),
+      Female: Number(dataMap.female || dataMap.Female || 0)
+    };
     genderChart = new Chart(ctx, {
       type:'doughnut',
       data:{ labels, datasets:[{ data: labels.map(l => keyed[l] || 0), backgroundColor:['#3b82f6','#ec4899'] }] },
@@ -318,14 +263,74 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  /* ---------------- EXPORTS ---------------- */
-  function csvEscape(v){ if(v==null)return ''; const s=String(v); return /[",\n]/.test(s)?`"${s.replace(/"/g,'""')}"`:s; }
+  /* ---------------- DEMOGRAPHICS SEGMENT TABLE ---------------- */
+  function renderDemoTable(payload) {
+    const body = $('demoTableBody');
+    const label = $('demoCountLabel');
+    if (!body || !label) return;
+
+    const total = payload?.count || 0;
+    const rows = payload?.rows || [];
+
+    label.textContent = `Total residents found: ${total}`;
+
+    body.innerHTML = '';
+
+    rows.forEach(person => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${person.name || ''}</td>
+        <td>${person.age != null ? person.age : ''}</td>
+        <td>${person.gender || ''}</td>
+        <td>${person.civil_status || ''}</td>
+        <td>${person.purok || ''}</td>
+      `;
+      body.appendChild(tr);
+    });
+  }
+
+  async function loadDemoFiltered(limitForTable = 200, exportMode = false) {
+    const ageMin = $('demoAgeMin').value || '';
+    const ageMax = $('demoAgeMax').value || '';
+    const gender = $('demoGender').value || '';
+    const civil  = $('demoCivil').value || '';
+    const purok  = $('demoPurok').value || '';
+
+    const params = {
+      demo_filter: 1,
+      age_min: ageMin,
+      age_max: ageMax,
+      gender: gender,
+      civil_status: civil,
+      purok: purok,
+      limit: exportMode ? 10000 : limitForTable // 200 preview vs up to 10k for CSV
+    };
+
+    const api = await fetchDemoFilter(params);
+    if (!exportMode) {
+      renderDemoTable(api.demo_filtered || {count:0,rows:[]});
+    }
+    return api.demo_filtered || {count:0,rows:[]};
+  }
+
+  /* ---------------- EXPORT HELPERS ---------------- */
+  function csvEscape(v){
+    if(v==null)return '';
+    const s=String(v);
+    return /[",\n]/.test(s)?`"${s.replace(/"/g,'""')}"`:s;
+  }
+
   function downloadBlob(text, filename, type='text/csv;charset=utf-8;'){
     const blob = new Blob([text], { type });
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob); a.download = filename;
-    document.body.appendChild(a); a.click();
-    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 0);
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      URL.revokeObjectURL(a.href);
+      a.remove();
+    }, 0);
   }
 
   function buildRequestsCSV(api, view, code) {
@@ -366,81 +371,85 @@ document.addEventListener('DOMContentLoaded', () => {
       const daily = api?.sales?.daily || {};
       Object.keys(daily).sort().forEach(ymd => {
         const bySvc = daily[ymd] || {};
-        if (canon) rows.push([ymd, Number(bySvc[canon]||0).toFixed(2)]);
-        else Object.keys(bySvc).forEach(svc => rows.push([ymd, svc, Number(bySvc[svc]||0).toFixed(2)]));
+        if (canon) {
+          rows.push([ymd, Number(bySvc[canon]||0).toFixed(2)]);
+        } else {
+          Object.keys(bySvc).forEach(svc => {
+            rows.push([ymd, svc, Number(bySvc[svc]||0).toFixed(2)]);
+          });
+        }
       });
     } else {
       rows.push(['Service Type','Amount (PHP)']);
       const byType = api?.sales?.byType || {};
-      Object.keys(byType).forEach(k => rows.push([k, Number(byType[k]||0).toFixed(2)]));
+      Object.keys(byType).forEach(k => {
+        rows.push([k, Number(byType[k]||0).toFixed(2)]);
+      });
       rows.push(['Total', Number(api?.sales?.total || 0).toFixed(2)]);
     }
     return rows.map(r => r.map(csvEscape).join(',')).join('\n');
   }
 
-  function buildTxCSV(tx) {
-    const rows = [['Date/Time','Receipt','Payer','Cashier','Service','Request ID','Amount (PHP)']];
-    (tx?.rows || []).forEach(row => {
-      (row.items || []).forEach(it => {
-        rows.push([
-          row.payment_date || '',
-          row.receipt_number || '',
-          row.user?.name || row.user?.email || row.user?.id || '',
-          row.cashier?.name || row.cashier?.id || '',
-          it.service || '',
-          it.request_id || '',
-          Number(it.amount || 0).toFixed(2)
-        ]);
-      });
+  function buildDemoCSV(demo) {
+    const rows = [];
+    rows.push(['Name','Age','Gender','Civil Status','Purok']);
+    (demo?.rows || []).forEach(p => {
+      rows.push([
+        p.name || '',
+        p.age != null ? p.age : '',
+        p.gender || '',
+        p.civil_status || '',
+        p.purok || ''
+      ]);
     });
     return rows.map(r => r.map(csvEscape).join(',')).join('\n');
   }
 
-  document.querySelectorAll('.export-btn').forEach((btn) => {
-    btn.addEventListener('click', async function () {
-      const kind = this.getAttribute('data-report');
-      if (kind === 'requests') {
-        const view = document.querySelector('#reqViewPills .pill.active')?.dataset.view || 'summary';
-        const code = $('reqServiceSelect').value || '';
-        const params = { req_view: view, req_service: code, req_start_date: $('reqDateStart').value || '', req_end_date: $('reqDateEnd').value || '' };
-        const api = await fetchReport(params);
-        downloadBlob(buildRequestsCSV(api, view, code), `requests_${view}.csv`);
-      } else if (kind === 'financial') {
-        const view = document.querySelector('#salesViewPills .pill.active')?.dataset.view || 'summary';
-        const code = $('salesServiceSelect').value || '';
-        const params = { sales_view: view, sales_service: code, sales_start_date: $('salesDateStart').value || '', sales_end_date: $('salesDateEnd').value || '' };
-        const api = await fetchReport(params);
-        downloadBlob(buildSalesCSV(api, view, code), `sales_${view}.csv`);
-      } else if (kind === 'demographics') {
-        if (!lastApi) return;
-        const rows = [];
-        rows.push(['Resident Demographics']);
-        rows.push(['Age Distribution']);
-        rows.push(['0-17','18-35','36-55','56+']);
-        const age = lastApi?.demographics?.age || {};
-        rows.push([age['0-17']||0, age['18-35']||0, age['36-55']||0, age['56+']||0]);
-        rows.push([]);
-        rows.push(['Gender Distribution']);
-        rows.push(['Male','Female']);
-        const g = lastApi?.demographics?.gender || {};
-        rows.push([g.male||0, g.female||0]);
-        downloadBlob(rows.map(r=>r.map(csvEscape).join(',')).join('\n'), 'demographics.csv');
-      } else if (kind === 'transactions') {
-        const params = { 
-          tx_service: $('txServiceSelect').value || '', 
-          tx_cashier: $('txCashier').value || '', 
-          tx_search: $('txSearch').value || '',
-          tx_start_date: $('txDateStart').value || '', 
-          tx_end_date: $('txDateEnd').value || '', 
-          tx_page: 1, tx_page_size: 10000 // export all (sensible cap)
-        };
-        const api = await fetchReport(params);
-        downloadBlob(buildTxCSV(api?.transactions || {}), 'transactions.csv');
-      }
-    });
-  });
+  /* ---------------- LOADERS ---------------- */
+  async function loadGlobal(period, s, e) {
+    lastApi = await fetchReport({ period, start_date: s || '', end_date: e || '' });
+    hydrateSummary(lastApi);
+  }
+
+  async function loadRequests() {
+    const view = document.querySelector('#reqViewPills .pill.active')?.dataset.view || 'summary';
+    const code = $('reqServiceSelect').value || '';
+    const s = $('reqDateStart').value || '';
+    const e = $('reqDateEnd').value || '';
+    const params = { req_view: view, req_service: code, req_start_date: s, req_end_date: e };
+    const api = await fetchReport(params);
+
+    // reset header for summary view
+    $('requestsTableHead').innerHTML = `<tr>
+      <th>Service Type</th><th>Total Requests</th><th>Approved</th><th>Rejected</th><th>Pending</th>
+    </tr>`;
+
+    if (view === 'daily') {
+      const canon = code ? serviceCodeToCanon[code] : '';
+      renderRequestsDaily(api?.requests?.daily || {}, canon || null);
+    } else {
+      renderRequestsSummary(api?.requests?.byType || {});
+    }
+  }
+
+  async function loadSales() {
+    const view = document.querySelector('#salesViewPills .pill.active')?.dataset.view || 'summary';
+    const code = $('salesServiceSelect').value || '';
+    const s = $('salesDateStart').value || '';
+    const e = $('salesDateEnd').value || '';
+    const params = { sales_view: view, sales_service: code, sales_start_date: s, sales_end_date: e };
+    const api = await fetchReport(params);
+
+    if (view === 'daily') {
+      const canon = code ? serviceCodeToCanon[code] : '';
+      renderSalesDaily(api?.sales?.daily || {}, canon || null);
+    } else {
+      renderSalesSummary(api?.sales?.byType || {}, api?.sales?.total || 0);
+    }
+  }
 
   /* ---------------- UI hooks ---------------- */
+  // global summary period filters
   document.querySelectorAll('#globalTimeFilters .time-filter').forEach((f) => {
     f.addEventListener('click', async () => {
       document.querySelectorAll('#globalTimeFilters .time-filter').forEach(x => x.classList.remove('active'));
@@ -454,42 +463,133 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
   });
-  if (hasEl('applyDateRange')) $('applyDateRange').addEventListener('click', () => {
-    const s = $('dateRangeStart').value, e = $('dateRangeEnd').value;
-    if (s && e && new Date(s) <= new Date(e)) loadGlobal('custom', s, e);
-    else alert('Please select a valid date range');
-  });
 
-  // requests local
+  if (hasEl('applyDateRange')) {
+    $('applyDateRange').addEventListener('click', () => {
+      const s = $('dateRangeStart').value;
+      const e = $('dateRangeEnd').value;
+      if (s && e && new Date(s) <= new Date(e)) {
+        loadGlobal('custom', s, e);
+      } else {
+        alert('Please select a valid date range');
+      }
+    });
+  }
+
+  // requests filters
   document.querySelectorAll('#reqViewPills .pill').forEach(p => p.addEventListener('click', async () => {
     document.querySelectorAll('#reqViewPills .pill').forEach(x => x.classList.remove('active'));
-    p.classList.add('active'); await loadRequests();
+    p.classList.add('active');
+    await loadRequests();
   }));
   $('reqApply').addEventListener('click', loadRequests);
   $('reqServiceSelect').addEventListener('change', loadRequests);
 
-  // sales local
+  // sales filters
   document.querySelectorAll('#salesViewPills .pill').forEach(p => p.addEventListener('click', async () => {
     document.querySelectorAll('#salesViewPills .pill').forEach(x => x.classList.remove('active'));
-    p.classList.add('active'); await loadSales();
+    p.classList.add('active');
+    await loadSales();
   }));
   $('salesApply').addEventListener('click', loadSales);
   $('salesServiceSelect').addEventListener('change', loadSales);
 
-  // tx local + pager
-  $('txApply').addEventListener('click', () => loadTx(1));
-  $('txPrev').addEventListener('click', (e) => loadTx(Number(e.currentTarget.dataset.page || 1)));
-  $('txNext').addEventListener('click', (e) => loadTx(Number(e.currentTarget.dataset.page || 1)));
+  // demographics segmentation filters
+  if ($('demoApply')) {
+    $('demoApply').addEventListener('click', async () => {
+      try {
+        await loadDemoFiltered(200, false);
+      } catch (err) {
+        alert('Error loading resident list');
+        console.error(err);
+      }
+    });
+  }
 
-  // Kickoff: global summary, then sections
+  if ($('demoExportBtn')) {
+    $('demoExportBtn').addEventListener('click', async () => {
+      try {
+        const demoData = await loadDemoFiltered(10000, true);
+        downloadBlob(buildDemoCSV(demoData), 'resident_segment.csv');
+      } catch (err) {
+        alert('Error exporting CSV');
+        console.error(err);
+      }
+    });
+  }
+
+  // export buttons (requests / financial / demographics summary / segmentation)
+  document.querySelectorAll('.export-btn').forEach((btn) => {
+    btn.addEventListener('click', async function () {
+      const kind = this.getAttribute('data-report');
+
+      if (kind === 'requests') {
+        const view = document.querySelector('#reqViewPills .pill.active')?.dataset.view || 'summary';
+        const code = $('reqServiceSelect').value || '';
+        const params = {
+          req_view: view,
+          req_service: code,
+          req_start_date: $('reqDateStart').value || '',
+          req_end_date: $('reqDateEnd').value || ''
+        };
+        const api = await fetchReport(params);
+        downloadBlob(buildRequestsCSV(api, view, code), `requests_${view}.csv`);
+
+      } else if (kind === 'financial') {
+        const view = document.querySelector('#salesViewPills .pill.active')?.dataset.view || 'summary';
+        const code = $('salesServiceSelect').value || '';
+        const params = {
+          sales_view: view,
+          sales_service: code,
+          sales_start_date: $('salesDateStart').value || '',
+          sales_end_date: $('salesDateEnd').value || ''
+        };
+        const api = await fetchReport(params);
+        downloadBlob(buildSalesCSV(api, view, code), `sales_${view}.csv`);
+
+      } else if (kind === 'demographics') {
+        // export the summary (age buckets + gender buckets)
+        if (!lastApi) return;
+        const rows = [];
+        rows.push(['Resident Demographics']);
+        rows.push(['Age Distribution']);
+        rows.push(['0-17','18-35','36-55','56+']);
+        const age = lastApi?.demographics?.age || {};
+        rows.push([
+          age['0-17']||0,
+          age['18-35']||0,
+          age['36-55']||0,
+          age['56+']||0
+        ]);
+        rows.push([]);
+        rows.push(['Gender Distribution']);
+        rows.push(['Male','Female']);
+        const g = lastApi?.demographics?.gender || {};
+        rows.push([g.male||0, g.female||0]);
+        downloadBlob(rows.map(r=>r.map(csvEscape).join(',')).join('\n'), 'demographics.csv');
+
+      } else if (kind === 'demo_export') {
+        // segmentation export
+        const demoData = await loadDemoFiltered(10000, true);
+        downloadBlob(buildDemoCSV(demoData), 'resident_segment.csv');
+      }
+    });
+  });
+
+  /* ---------------- INITIAL PAGE LOAD ---------------- */
   (async () => {
+    // global summary ("This Month" default)
     await loadGlobal('this_month');
-    // demographics charts from lastApi
+
+    // demographics charts from lastApi.summary
     updateAgeChart(['0-17','18-35','36-55','56+'], lastApi?.demographics?.age || {});
     updateGenderChart(['Male','Female'], lastApi?.demographics?.gender || {});
-    // sections initial load (no local filters yet)
+
+    // initial demographic segmentation table (no filters)
+    await loadDemoFiltered(200, false);
+
+    // section tables
     await loadRequests();
     await loadSales();
-    await loadTx(1);
   })();
 });

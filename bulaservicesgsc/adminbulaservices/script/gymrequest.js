@@ -13,14 +13,27 @@ async function apiPost(payload) {
     body: JSON.stringify(payload)
   });
 
-  let data, text;
-  try { data = await res.clone().json(); } catch { text = await res.text(); }
+  // Read text first, then try to parse JSON safely
+  const bodyText = await res.text();
+  let data;
+  try { data = bodyText ? JSON.parse(bodyText) : undefined; } catch { data = undefined; }
 
-  if (!res.ok || (data && data.status !== 'success')) {
-    if (text && !data) console.error('Server body:', text);
-    const msg = (data && (data.message + (data.detail ? ' — ' + data.detail : ''))) || text || `HTTP ${res.status}`;
-    throw new Error(msg);
+  // Helpful console logging for debugging
+  if (!res.ok || (data && data.status && data.status !== 'success')) {
+    console.error('[gym] API error', {
+      httpStatus: res.status,
+      bodyText,
+      parsed: data
+    });
+    const serverMsg =
+      (data && (data.message || data.error)) ||
+      (bodyText && bodyText.trim()) ||
+      `HTTP ${res.status}`;
+    throw new Error(serverMsg);
   }
+
+  // If server returned non-JSON success (shouldn't happen), normalize
+  if (!data) return { status: 'success', data: null };
   return data;
 }
 
@@ -82,7 +95,7 @@ async function refreshData() {
   }
 
   try {
-    const res = await apiPost({ action: 'list_reservations', per_page: 200 });
+    const res = await apiPost({ action: 'list_reservations', per_page: 200, status: 'pending' });
     const tbody = document.getElementById('requestsTableBody');
     if (!tbody) return;
     tbody.innerHTML = '';

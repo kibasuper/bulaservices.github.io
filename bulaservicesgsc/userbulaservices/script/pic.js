@@ -1,14 +1,41 @@
-// dynamic fee calc
-function calculateFee() {
-  const qtyEl = document.getElementById('copyQuantity');
-  const quantity = parseInt(qtyEl?.value, 10) || 1;
-  const pricePerCopy = typeof window.PIC_PRICE === 'number' ? window.PIC_PRICE : 100;
-  const fee = quantity * pricePerCopy;
-  const feeEl = document.getElementById('calculatedFee');
-  if (feeEl) feeEl.textContent = fee.toFixed(2);
+// /script/pic.js
+
+let PIC_PRICE_CACHE = null;
+
+/* ===== Pricing with server fallback ===== */
+async function fetchPicPrice() {
+  if (typeof PIC_PRICE_CACHE === 'number' && !Number.isNaN(PIC_PRICE_CACHE)) return PIC_PRICE_CACHE;
+
+  if (typeof window.PIC_PRICE !== 'undefined') {
+    const p = parseFloat(window.PIC_PRICE);
+    if (!Number.isNaN(p) && p > 0) { PIC_PRICE_CACHE = p; return p; }
+  }
+  try {
+    const res = await fetch('server/certificate_functions.php?action=get_price&type=' + (window.PRICE_TYPE || 'pic'), {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' },
+      credentials: 'same-origin'
+    });
+    const data = await res.json();
+    const p = parseFloat(data?.price);
+    if (!Number.isNaN(p) && p > 0) { PIC_PRICE_CACHE = p; window.PIC_PRICE = p; return p; }
+  } catch {}
+  PIC_PRICE_CACHE = 100; window.PIC_PRICE = 100; return 100;
 }
 
-// pretty confirm
+/* ============= Dynamic fee ============= */
+async function calculateFee() {
+  const qtyEl = document.getElementById('copyQuantity');
+  let quantity = Math.max(1, parseInt(qtyEl?.value, 10) || 1);
+  if (quantity > 5) quantity = 5;
+  if (qtyEl && String(qtyEl.value) !== String(quantity)) qtyEl.value = quantity;
+
+  const price = await fetchPicPrice();
+  const feeEl = document.getElementById('calculatedFee');
+  if (feeEl) feeEl.textContent = (quantity * price).toFixed(2);
+}
+
+/* ============= Pretty confirm ============= */
 function prettyConfirm({ title, text, okText = 'Yes', cancelText = 'Cancel' } = {}) {
   return new Promise((resolve) => {
     const root = document.getElementById('uiConfirm');
@@ -45,7 +72,7 @@ function prettyConfirm({ title, text, okText = 'Yes', cancelText = 'Cancel' } = 
   });
 }
 
-// purpose radios (bc.php-style)
+/* ============= Purpose radios ============= */
 function selectPurpose(kind) {
   const map = {
     Loan:        'loanPurpose',
@@ -58,11 +85,10 @@ function selectPurpose(kind) {
   const radio = document.getElementById(id);
   if (radio) radio.checked = true;
 
-  document.querySelectorAll('.purpose-option').forEach(option => {
-    option.classList.remove('active');
-    option.setAttribute('aria-pressed', 'false');
+  document.querySelectorAll('.purpose-option').forEach(o => {
+    o.classList.remove('active');
+    o.setAttribute('aria-pressed', 'false');
   });
-
   const current = radio?.closest('.purpose-option');
   if (current) {
     current.classList.add('active');
@@ -76,25 +102,72 @@ function selectPurpose(kind) {
   if (input) input.required = showOther;
 }
 
-// validate a section
+/* ============= Requirements config ============= */
+const REQS = Array.isArray(window.REQUIRED_REQS) ? window.REQUIRED_REQS : [
+  { key: 'purok_clearance', label: 'Purok Clearance' },
+  { key: 'proof_of_income', label: 'Proof of Income' },
+  { key: 'valid_id',        label: 'Valid ID (Government-issued)' }
+];
+
+function setupRequirementUI() {
+  const validTypes = ['image/jpeg','image/png','application/pdf'];
+
+  REQS.forEach(({ key, label }) => {
+    const radios    = document.querySelectorAll(`input[name="req_method[${key}]"]`);
+    const ui        = document.getElementById(`req_ui_${key}`);
+    const fileInput = document.getElementById(`req_${key}`);
+    const errEl     = document.getElementById(`err_req_${key}`);
+    const nameEl    = document.getElementById(`name_req_${key}`);
+
+    const chosen = document.querySelector(`input[name="req_method[${key}]"]:checked`);
+    if (chosen) {
+      const isUpload = chosen.value === 'upload';
+      if (ui) ui.style.display = isUpload ? 'block' : 'none';
+      if (fileInput) fileInput.required = isUpload;
+    }
+
+    radios.forEach(r => {
+      r.addEventListener('change', () => {
+        if (!r.checked) return;
+        const isUpload = r.value === 'upload';
+        if (ui) ui.style.display = isUpload ? 'block' : 'none';
+        if (fileInput) {
+          fileInput.required = isUpload;
+          if (!isUpload) { fileInput.value = ''; if (nameEl) nameEl.textContent = 'No file chosen'; }
+        }
+        if (errEl) errEl.style.display = 'none';
+      });
+    });
+
+    fileInput?.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) { if (nameEl) nameEl.textContent = 'No file chosen'; return; }
+      if (file.size > 5 * 1024 * 1024) {
+        if (errEl) { errEl.textContent = 'File size exceeds 5MB limit'; errEl.style.display = 'block'; }
+        e.target.value = ''; if (nameEl) nameEl.textContent = 'No file chosen'; return;
+      }
+      if (!validTypes.includes(file.type)) {
+        if (errEl) { errEl.textContent = 'Invalid file type. Upload JPG, PNG, or PDF'; errEl.style.display = 'block'; }
+        e.target.value = ''; if (nameEl) nameEl.textContent = 'No file chosen'; return;
+      }
+      if (nameEl) nameEl.textContent = file.name;
+      if (errEl) errEl.style.display = 'none';
+    });
+  });
+}
+
+/* ============= Validation ============= */
 function validateSection(sectionId) {
   let isValid = true;
   const section = document.getElementById(sectionId);
   if (!section) return false;
 
-  // generic requireds (skip readonly)
-  const requiredInputs = section.querySelectorAll('[required]:not([readonly])');
-  requiredInputs.forEach(input => {
-    if (!String(input.value || '').trim()) {
-      input.classList.add('has-error');
-      const err = document.getElementById(input.id + 'Error');
-      if (err) err.style.display = 'block';
-      isValid = false;
-    } else {
-      input.classList.remove('has-error');
-      const err = document.getElementById(input.id + 'Error');
-      if (err) err.style.display = 'none';
-    }
+  section.querySelectorAll('[required]').forEach(input => {
+    const ok = String(input.value || '').trim().length > 0;
+    input.classList.toggle('has-error', !ok);
+    const err = document.getElementById(input.id + 'Error');
+    if (err) err.style.display = ok ? 'none' : 'block';
+    if (!ok) isValid = false;
   });
 
   if (sectionId === 'section2') {
@@ -105,7 +178,7 @@ function validateSection(sectionId) {
       isValid = false;
     } else if (selected.value === 'Other') {
       const spec = document.getElementById('specifyPurpose');
-      if (!spec || !String(spec.value).trim()) {
+      if (!spec || !spec.value.trim()) {
         const err = document.getElementById('specifyPurposeError');
         if (err) err.style.display = 'block';
         if (spec) spec.classList.add('has-error');
@@ -115,49 +188,93 @@ function validateSection(sectionId) {
   }
 
   if (sectionId === 'section3') {
-    const method = document.querySelector('input[name="document_method"]:checked');
-    if (!method) {
-      const err = document.getElementById('documentMethodError');
-      if (err) err.style.display = 'block';
-      isValid = false;
-    } else if (method.value === 'upload') {
-      const fileInput = document.getElementById('purokClearance');
-      if (!fileInput || !fileInput.files[0]) {
-        const fileErr = document.getElementById('fileUploadError');
-        if (fileErr) fileErr.style.display = 'block';
-        isValid = false;
+    let perReqOk = true;
+    REQS.forEach(({ key, label }) => {
+      const chosen = document.querySelector(`input[name="req_method[${key}]"]:checked`);
+      const errEl = document.getElementById(`err_req_${key}`);
+      if (errEl) errEl.style.display = 'none';
+
+      if (!chosen) { perReqOk = false; return; }
+      if (chosen.value === 'upload') {
+        const fileInput = document.getElementById(`req_${key}`);
+        if (!fileInput?.files?.[0]) {
+          if (errEl) { errEl.textContent = `Please upload ${label}`; errEl.style.display = 'block'; }
+          perReqOk = false;
+        }
       }
-    }
+    });
+
+    const groupErr = document.getElementById('documentMethodError');
+    if (groupErr) groupErr.style.display = perReqOk ? 'none' : 'block';
+    isValid = isValid && perReqOk;
   }
 
   return isValid;
 }
 
-function selectDocumentOption(method) {
-  const optionInput = document.querySelector(`.document-option input[value="${method}"]`);
-  if (optionInput) optionInput.checked = true;
-
-  document.querySelectorAll('.document-option').forEach(opt => {
-    opt.classList.remove('active');
-    opt.setAttribute('aria-pressed', 'false');
+/* ============= Review ============= */
+function buildRequirementsState() {
+  const list = [];
+  document.querySelectorAll('.req-block').forEach(block => {
+    const key   = block.getAttribute('data-key');
+    const title = block.querySelector('.req-title')?.innerText.replace('*','').trim() || key;
+    const chosen = document.querySelector(`input[name="req_method[${key}]"]:checked`);
+    const method = chosen ? chosen.value : '';
+    const file = document.getElementById('req_' + key)?.files?.[0] || null;
+    list.push({ key, title, method, fileName: file ? file.name : null });
   });
-
-  const current = optionInput?.closest('.document-option');
-  if (current) {
-    current.classList.add('active');
-    current.setAttribute('aria-pressed', 'true');
-  }
-
-  const uploadContainer = document.getElementById('uploadContainer');
-  const hallInfo = document.getElementById('hallInfo');
-  const fileInput = document.getElementById('purokClearance');
-
-  if (uploadContainer) uploadContainer.style.display = method === 'upload' ? 'block' : 'none';
-  if (hallInfo) hallInfo.style.display = method === 'hall' ? 'block' : 'none';
-  if (fileInput) fileInput.required = method === 'upload';
+  return list;
 }
 
-// AJAX submit to server
+function renderReview() {
+  const personal = document.getElementById('revPersonal');
+  const purpose  = document.getElementById('revPurpose');
+  const reqs     = document.getElementById('revReqs');
+  const totalEl  = document.getElementById('revTotal');
+
+  if (personal) {
+    personal.innerHTML = `
+      <li><strong>Name:</strong> ${document.getElementById('fullName')?.value || ''}</li>
+      <li><strong>Contact:</strong> ${document.getElementById('contactNumber')?.value || ''}</li>
+      <li><strong>Address:</strong> ${document.getElementById('address')?.value || ''}</li>
+      <li><strong>Year of Stay:</strong> ${document.getElementById('yearOfStay')?.value || ''}</li>
+    `;
+  }
+
+  const p = (document.querySelector('input[name="purpose"]:checked')?.value) || '';
+  const pOther = (p === 'Other') ? (document.getElementById('specifyPurpose')?.value || '') : '';
+  const copies = parseInt(document.getElementById('copyQuantity')?.value || '1', 10);
+  if (purpose) {
+    purpose.innerHTML = `
+      <li><strong>Purpose:</strong> ${p}${p === 'Other' && pOther ? ' — ' + pOther : ''}</li>
+      <li><strong>Copies:</strong> ${copies}</li>
+    `;
+  }
+
+  const items = buildRequirementsState();
+  if (reqs) {
+    reqs.innerHTML = items.map(it => `
+      <div class="req-line">
+        <div class="req-line-title">${it.title}</div>
+        <div class="req-line-detail">
+          ${it.method === 'upload'
+            ? `<span class="badge badge-upload"><i class="fas fa-upload"></i> Upload</span>
+               <span class="file-name">${it.fileName || '(no file selected)'}</span>`
+            : it.method === 'hall'
+              ? `<span class="badge badge-hall"><i class="fas fa-building"></i> Bring to Hall</span>`
+              : `<span class="badge"><i class="fas fa-question-circle"></i> Not chosen</span>`}
+        </div>
+      </div>
+    `).join('');
+  }
+
+  fetchPicPrice().then(price => {
+    const total = (isFinite(price) ? price : 100) * (isFinite(copies) ? copies : 1);
+    if (totalEl) totalEl.textContent = total.toFixed(2);
+  });
+}
+
+/* ============= Submit & helpers ============= */
 async function submitForm(formData) {
   try {
     const response = await fetch('server/certificate_functions.php?action=submit_request', {
@@ -166,8 +283,8 @@ async function submitForm(formData) {
     });
     const text = await response.text();
     try { return JSON.parse(text); }
-    catch (e) {
-      console.error('JSON parse error:', e, text);
+    catch {
+      console.error('Invalid JSON from server:', text);
       return { success: false, message: 'Server returned invalid response. Check server logs.' };
     }
   } catch (e) {
@@ -191,86 +308,64 @@ async function fetchAndFillUserInfo() {
   } catch {}
 }
 
-document.addEventListener('DOMContentLoaded', function() {
+/* ============= Init ============= */
+document.addEventListener('DOMContentLoaded', async function() {
   document.getElementById('uiConfirm')?.classList.remove('is-open');
 
-  // price label + total
+  const price = await fetchPicPrice();
   const perCopyText = document.getElementById('perCopyText');
-  if (perCopyText) {
-    const p = typeof window.PIC_PRICE === 'number' ? window.PIC_PRICE : 100;
-    perCopyText.textContent = `× ₱${p.toFixed(2)} per copy`;
-  }
-  calculateFee();
-
-  // file validation
-  document.getElementById('purokClearance')?.addEventListener('change', function(e) {
-    const file = e.target.files[0];
-    const nameEl = document.getElementById('fileName');
-    const errEl = document.getElementById('fileUploadError');
-
-    if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        if (errEl) errEl.textContent = 'File size exceeds 5MB limit';
-        if (errEl) errEl.style.display = 'block';
-        e.target.value = ''; if (nameEl) nameEl.textContent = 'No file chosen'; return;
-      }
-      const valid = ['image/jpeg','image/png','application/pdf'];
-      if (!valid.includes(file.type)) {
-        if (errEl) errEl.textContent = 'Invalid file type. Please upload JPG, PNG, or PDF';
-        if (errEl) errEl.style.display = 'block';
-        e.target.value = ''; if (nameEl) nameEl.textContent = 'No file chosen'; return;
-      }
-      if (nameEl) nameEl.textContent = file.name;
-      if (errEl) errEl.style.display = 'none';
-    } else {
-      if (nameEl) nameEl.textContent = 'No file chosen';
-    }
-  });
-
+  if (perCopyText) perCopyText.textContent = `× ₱${price.toFixed(2)} per copy`;
+  await calculateFee();
   document.getElementById('copyQuantity')?.addEventListener('input', calculateFee);
 
-  // nav
+  // Step navigation
   document.getElementById('nextBtn1')?.addEventListener('click', function() {
-    if (validateSection('section1')) {
-      document.getElementById('section1')?.classList.remove('active');
-      document.getElementById('section2')?.classList.add('active');
-      document.getElementById('step1')?.classList.remove('active');
-      document.getElementById('step1')?.classList.add('completed');
-      document.getElementById('step2')?.classList.add('active');
-      document.getElementById('section2')?.focus();
-    }
+    if (!validateSection('section1')) return;
+    document.getElementById('section1')?.classList.remove('active');
+    document.getElementById('section2')?.classList.add('active');
+    document.getElementById('step1')?.classList.remove('active'); document.getElementById('step1')?.classList.add('completed');
+    document.getElementById('step2')?.classList.add('active');
   });
 
   document.getElementById('nextBtn2')?.addEventListener('click', function() {
-    if (validateSection('section2')) {
-      document.getElementById('section2')?.classList.remove('active');
-      document.getElementById('section3')?.classList.add('active');
-      document.getElementById('step2')?.classList.remove('active');
-      document.getElementById('step2')?.classList.add('completed');
-      document.getElementById('step3')?.classList.add('active');
-      document.getElementById('section3')?.focus();
-    }
+    if (!validateSection('section2')) return;
+    document.getElementById('section2')?.classList.remove('active');
+    document.getElementById('section3')?.classList.add('active');
+    document.getElementById('step2')?.classList.remove('active'); document.getElementById('step2')?.classList.add('completed');
+    document.getElementById('step3')?.classList.add('active');
+  });
+
+  document.getElementById('nextBtn3')?.addEventListener('click', function() {
+    if (!validateSection('section3')) return;
+    document.getElementById('section3')?.classList.remove('active');
+    document.getElementById('section4')?.classList.add('active');
+    document.getElementById('step3')?.classList.remove('active'); document.getElementById('step3')?.classList.add('completed');
+    document.getElementById('step4')?.classList.add('active');
+    renderReview();
   });
 
   document.getElementById('prevBtn1')?.addEventListener('click', function() {
     document.getElementById('section2')?.classList.remove('active');
     document.getElementById('section1')?.classList.add('active');
     document.getElementById('step1')?.classList.add('active');
-    document.getElementById('step2')?.classList.remove('active');
-    document.getElementById('step2')?.classList.remove('completed');
-    document.getElementById('section1')?.focus();
+    document.getElementById('step2')?.classList.remove('active'); document.getElementById('step2')?.classList.remove('completed');
   });
 
   document.getElementById('prevBtn2')?.addEventListener('click', function() {
     document.getElementById('section3')?.classList.remove('active');
     document.getElementById('section2')?.classList.add('active');
     document.getElementById('step2')?.classList.add('active');
-    document.getElementById('step3')?.classList.remove('active');
-    document.getElementById('step3')?.classList.remove('completed');
-    document.getElementById('section2')?.focus();
+    document.getElementById('step3')?.classList.remove('active'); document.getElementById('step3')?.classList.remove('completed');
   });
 
-  // Cancel → pretty confirm
+  document.getElementById('prevBtn3')?.addEventListener('click', function() {
+    document.getElementById('section4')?.classList.remove('active');
+    document.getElementById('section3')?.classList.add('active');
+    document.getElementById('step3')?.classList.add('active');
+    document.getElementById('step4')?.classList.remove('active'); document.getElementById('step4')?.classList.remove('completed');
+  });
+
+  // Cancel
   document.getElementById('cancelBtn')?.addEventListener('click', async function () {
     const confirmed = await prettyConfirm({
       title: 'Cancel application?',
@@ -281,40 +376,50 @@ document.addEventListener('DOMContentLoaded', function() {
     if (confirmed) window.location.href = 'home.php';
   });
 
-  // submit → AJAX
+  // Requirements UI
+  setupRequirementUI();
+
+  // Submit
   const formEl = document.getElementById('picForm');
+  const svcTypeEl = document.getElementById('serviceType');
   formEl?.addEventListener('submit', async function(e) {
     e.preventDefault();
-    if (!validateSection('section3')) return;
+
+    if (!validateSection('section3')) {
+      document.getElementById('section4')?.classList.remove('active');
+      document.getElementById('section3')?.classList.add('active');
+      document.getElementById('step4')?.classList.remove('active');
+      document.getElementById('step3')?.classList.add('active');
+      return;
+    }
+
+    if (svcTypeEl) svcTypeEl.value = 'proof_income';
 
     const submitBtn = document.getElementById('submitApplication');
     if (submitBtn) { submitBtn.disabled = true; submitBtn.innerHTML = '<span class="spinner"></span> Submitting...'; }
 
     try {
-      const formData = new FormData(this);
-      formData.set('service_type', 'proof_income'); // enforce
-      formData.set('copies', document.getElementById('copyQuantity')?.value || '1');
+      const formData = new FormData(this); // includes requirements[...] and req_method[...]
+      if (!formData.get('copies')) formData.set('copies', document.getElementById('copyQuantity')?.value || '1');
 
       const result = await submitForm(formData);
 
       if (result.success) {
-        const refEl = document.getElementById('referenceNumber');
-        if (refEl) refEl.textContent = 'Reference Number: ' + result.reference_number;
-        const amtEl = document.getElementById('amountDue');
-        if (amtEl) amtEl.textContent = 'Amount Due: ₱' + Number(result.amount || 0).toFixed(2);
-        const modal = document.getElementById('successModal');
-        if (modal) { modal.style.display = 'block'; document.body.style.overflow = 'hidden'; }
+        const refEl = document.getElementById('referenceNumber'); if (refEl) refEl.textContent = 'Reference Number: ' + result.reference_number;
+        const amtEl = document.getElementById('amountDue'); if (amtEl) amtEl.textContent = 'Amount Due: ₱' + Number(result.amount || 0).toFixed(2);
+        const modal = document.getElementById('successModal'); if (modal) { modal.style.display = 'block'; document.body.style.overflow = 'hidden'; }
       } else {
         alert('Error: ' + (result.message || 'Unknown error'));
         if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Submit Application'; }
       }
-    } catch (err) {
+    } catch {
       alert('An error occurred. Please try again.');
+      const submitBtn = document.getElementById('submitApplication');
       if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Submit Application'; }
     }
   });
 
-  // modal close
+  // success modal close
   const closers = document.querySelectorAll('.close-modal, #closeModalBtn');
   closers.forEach(el => el?.addEventListener('click', function() {
     const modal = document.getElementById('successModal');
@@ -327,6 +432,6 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   });
 
-  // backfill (already server-filled; just in case)
+  // optional autofill
   fetchAndFillUserInfo();
 });

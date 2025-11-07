@@ -1,14 +1,44 @@
 // /script/cedula.js
 
-function calculateFee() {
+let CED_PRICE_CACHE = null;
+
+/* ===================== PRICING ===================== */
+async function fetchCedulaPrice() {
+  if (typeof CED_PRICE_CACHE === 'number' && !Number.isNaN(CED_PRICE_CACHE)) return CED_PRICE_CACHE;
+
+  if (typeof window.CED_PRICE !== 'undefined') {
+    const p = parseFloat(window.CED_PRICE);
+    if (!Number.isNaN(p) && p > 0) { CED_PRICE_CACHE = p; return p; }
+  }
+
+  // fallback to server get_price endpoint (same as other certs)
+  try {
+    const res = await fetch('server/certificate_functions.php?action=get_price&type=' + (window.PRICE_TYPE || 'cedula'), {
+      method: 'GET',
+      credentials: 'same-origin',
+      headers: { 'Accept': 'application/json' }
+    });
+    const data = await res.json();
+    const p = parseFloat(data?.price);
+    if (!Number.isNaN(p) && p > 0) { CED_PRICE_CACHE = p; window.CED_PRICE = p; return p; }
+  } catch {}
+
+  CED_PRICE_CACHE = 5; window.CED_PRICE = 5; return 5;
+}
+
+async function calculateFee() {
   const qtyEl = document.getElementById('copyQuantity');
-  const quantity = parseInt(qtyEl?.value, 10) || 1;
-  const pricePerCopy = typeof window.CED_PRICE === 'number' ? window.CED_PRICE : 5;
+  let quantity = Math.max(1, parseInt(qtyEl?.value, 10) || 1);
+  if (quantity > 10) quantity = 10;
+  if (qtyEl && String(qtyEl.value) !== String(quantity)) qtyEl.value = quantity;
+
+  const pricePerCopy = await fetchCedulaPrice();
   const fee = quantity * pricePerCopy;
   const feeEl = document.getElementById('calculatedFee');
   if (feeEl) feeEl.textContent = fee.toFixed(2);
 }
 
+/* ===================== PRETTY CONFIRM ===================== */
 function prettyConfirm({ title, text, okText = 'Yes', cancelText = 'Cancel' } = {}) {
   return new Promise((resolve) => {
     const root = document.getElementById('uiConfirm');
@@ -45,13 +75,77 @@ function prettyConfirm({ title, text, okText = 'Yes', cancelText = 'Cancel' } = 
   });
 }
 
+/* ===================== REQUIREMENTS CONFIG ===================== */
+const REQS = Array.isArray(window.REQUIRED_REQS) ? window.REQUIRED_REQS : [
+  { key: 'purok_clearance', label: 'Purok Clearance' },
+  { key: 'valid_id',        label: 'Valid ID (Government-issued)' }
+];
+
+function setupRequirementUI() {
+  const validTypes = ['image/jpeg', 'image/png', 'application/pdf'];
+
+  REQS.forEach(({ key }) => {
+    const radios = document.querySelectorAll(`input[name="req_method[${key}]"]`);
+    const ui = document.getElementById(`req_ui_${key}`);
+    const fileInput = document.getElementById(`req_${key}`);
+    const errEl = document.getElementById(`err_req_${key}`);
+    const nameEl = document.getElementById(`name_req_${key}`);
+
+    // initial state if browser restored values
+    const chosen = document.querySelector(`input[name="req_method[${key}]"]:checked`);
+    if (chosen) {
+      if (chosen.value === 'upload') {
+        if (ui) ui.style.display = 'block';
+        if (fileInput) fileInput.required = true;
+      } else {
+        if (ui) ui.style.display = 'none';
+        if (fileInput) fileInput.required = false;
+      }
+    }
+
+    // toggle UI
+    radios.forEach(r => {
+      r.addEventListener('change', () => {
+        if (!r.checked) return;
+        if (r.value === 'upload') {
+          if (ui) ui.style.display = 'block';
+          if (fileInput) fileInput.required = true;
+        } else {
+          if (ui) ui.style.display = 'none';
+          if (fileInput) { fileInput.required = false; fileInput.value = ''; }
+          if (nameEl) nameEl.textContent = 'No file chosen';
+          if (errEl) errEl.style.display = 'none';
+        }
+      });
+    });
+
+    // file validation + filename
+    fileInput?.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) { if (nameEl) nameEl.textContent = 'No file chosen'; return; }
+
+      if (file.size > 5 * 1024 * 1024) {
+        if (errEl) { errEl.textContent = 'File size exceeds 5MB limit'; errEl.style.display = 'block'; }
+        e.target.value = ''; if (nameEl) nameEl.textContent = 'No file chosen'; return;
+      }
+      if (!validTypes.includes(file.type)) {
+        if (errEl) { errEl.textContent = 'Invalid file type. Upload JPG, PNG, or PDF'; errEl.style.display = 'block'; }
+        e.target.value = ''; if (nameEl) nameEl.textContent = 'No file chosen'; return;
+      }
+      if (nameEl) nameEl.textContent = file.name;
+      if (errEl) errEl.style.display = 'none';
+    });
+  });
+}
+
+/* ===================== VALIDATION ===================== */
 function validateSection(sectionId) {
   let isValid = true;
   const section = document.getElementById(sectionId);
   if (!section) return false;
 
-  const requiredInputs = section.querySelectorAll('[required]');
-  requiredInputs.forEach(input => {
+  // generic required inputs
+  section.querySelectorAll('[required]').forEach(input => {
     const ok = String(input.value || '').trim().length > 0;
     input.classList.toggle('has-error', !ok);
     const err = document.getElementById(input.id + 'Error');
@@ -59,6 +153,7 @@ function validateSection(sectionId) {
     if (!ok) isValid = false;
   });
 
+  // section2: check purpose + "Other"
   if (sectionId === 'section2') {
     const selected = document.querySelector('input[name="purpose"]:checked');
     if (!selected) {
@@ -76,49 +171,37 @@ function validateSection(sectionId) {
     }
   }
 
+  // section3: each requirement needs method; file required if "upload"
   if (sectionId === 'section3') {
-    const method = document.querySelector('input[name="document_method"]:checked');
-    if (!method) {
-      const err = document.getElementById('documentMethodError');
-      if (err) err.style.display = 'block';
-      isValid = false;
-    } else if (method.value === 'upload') {
-      const fileInput = document.getElementById('purokClearance');
-      if (!fileInput || !fileInput.files[0]) {
-        const fileErr = document.getElementById('fileUploadError');
-        if (fileErr) fileErr.style.display = 'block';
-        isValid = false;
+    let perReqOk = true;
+
+    REQS.forEach(({ key, label }) => {
+      const chosen = document.querySelector(`input[name="req_method[${key}]"]:checked`);
+      const errEl = document.getElementById(`err_req_${key}`);
+      if (errEl) errEl.style.display = 'none';
+
+      if (!chosen) {
+        perReqOk = false;
+        return;
       }
-    }
+      if (chosen.value === 'upload') {
+        const fileInput = document.getElementById(`req_${key}`);
+        if (!fileInput?.files?.[0]) {
+          if (errEl) { errEl.textContent = `Please upload ${label}`; errEl.style.display = 'block'; }
+          perReqOk = false;
+        }
+      }
+    });
+
+    const groupErr = document.getElementById('documentMethodError');
+    if (groupErr) groupErr.style.display = perReqOk ? 'none' : 'block';
+    isValid = isValid && perReqOk;
   }
 
   return isValid;
 }
 
-function selectDocumentOption(method) {
-  const optionInput = document.querySelector(`.document-option input[value="${method}"]`);
-  if (optionInput) optionInput.checked = true;
-
-  document.querySelectorAll('.document-option').forEach(opt => {
-    opt.classList.remove('active');
-    opt.setAttribute('aria-pressed', 'false');
-  });
-
-  const current = optionInput?.closest('.document-option');
-  if (current) {
-    current.classList.add('active');
-    current.setAttribute('aria-pressed', 'true');
-  }
-
-  const uploadContainer = document.getElementById('uploadContainer');
-  const hallInfo = document.getElementById('hallInfo');
-  const fileInput = document.getElementById('purokClearance');
-
-  if (uploadContainer) uploadContainer.style.display = method === 'upload' ? 'block' : 'none';
-  if (hallInfo) hallInfo.style.display = method === 'hall' ? 'block' : 'none';
-  if (fileInput) fileInput.required = method === 'upload';
-}
-
+/* ===================== PURPOSE UI ===================== */
 function selectPurpose(purpose) {
   const radio = document.getElementById((purpose.toLowerCase() + 'Purpose'));
   if (radio) radio.checked = true;
@@ -127,7 +210,6 @@ function selectPurpose(purpose) {
     option.classList.remove('active');
     option.setAttribute('aria-pressed', 'false');
   });
-
   const current = radio?.closest('.purpose-option');
   if (current) {
     current.classList.add('active');
@@ -141,6 +223,74 @@ function selectPurpose(purpose) {
   if (input) input.required = showOther;
 }
 
+/* ===================== REVIEW BUILDERS ===================== */
+function buildRequirementsState() {
+  const list = [];
+  document.querySelectorAll('.req-block').forEach(block => {
+    const key   = block.getAttribute('data-key');
+    const title = block.querySelector('.req-title')?.innerText.replace('*','').trim() || key;
+    const chosen = document.querySelector(`input[name="req_method[${key}]"]:checked`);
+    const method = chosen ? chosen.value : '';
+    const file = document.getElementById('req_' + key)?.files?.[0] || null;
+    list.push({ key, title, method, fileName: file ? file.name : null });
+  });
+  return list;
+}
+
+function renderReview() {
+  const personal = document.getElementById('revPersonal');
+  const purpose  = document.getElementById('revPurpose');
+  const reqs     = document.getElementById('revReqs');
+  const totalEl  = document.getElementById('revTotal');
+
+  // personal
+  if (personal) {
+    personal.innerHTML = `
+      <li><strong>Name:</strong> ${document.getElementById('fullName')?.value || ''}</li>
+      <li><strong>Contact:</strong> ${document.getElementById('contactNumber')?.value || ''}</li>
+      <li><strong>Address:</strong> ${document.getElementById('address')?.value || ''}</li>
+      <li><strong>Year of Stay:</strong> ${document.getElementById('yearOfStay')?.value || ''}</li>
+    `;
+  }
+
+  // purpose & copies
+  const p = (document.querySelector('input[name="purpose"]:checked')?.value) || '';
+  const pOther = (p === 'Other') ? (document.getElementById('specifyPurpose')?.value || '') : '';
+  const copies = parseInt(document.getElementById('copyQuantity')?.value || '1', 10);
+  if (purpose) {
+    purpose.innerHTML = `
+      <li><strong>Purpose:</strong> ${p}${p === 'Other' && pOther ? ' — ' + pOther : ''}</li>
+      <li><strong>Copies:</strong> ${copies}</li>
+    `;
+  }
+
+  // requirements summary
+  const items = buildRequirementsState();
+  if (reqs) {
+    reqs.innerHTML = items.map(it => `
+      <div class="req-line">
+        <div class="req-line-title">${it.title}</div>
+        <div class="req-line-detail">
+          ${it.method === 'upload'
+            ? `<span class="badge badge-upload"><i class="fas fa-upload"></i> Upload</span>
+               <span class="file-name">${it.fileName || '(no file selected)'}</span>`
+            : it.method === 'hall'
+              ? `<span class="badge badge-hall"><i class="fas fa-building"></i> Bring to Hall</span>`
+              : `<span class="badge"><i class="fas fa-question-circle"></i> Not chosen</span>`
+          }
+        </div>
+      </div>
+    `).join('');
+  }
+
+  // total
+  fetchCedulaPrice().then(price => {
+    const total = (isFinite(price) ? price : 5) * (isFinite(copies) ? copies : 1);
+    if (totalEl) totalEl.textContent = total.toFixed(2);
+  });
+}
+
+/* ===================== SUBMIT ===================== */
 async function submitForm(formData) {
   try {
     const response = await fetch('server/certificate_functions.php?action=submit_request', {
@@ -149,12 +299,12 @@ async function submitForm(formData) {
     });
     const text = await response.text();
     try { return JSON.parse(text); }
-    catch (e) {
-      console.error('JSON parse error:', e, text);
+    catch {
+      console.error('Invalid JSON from server:', text);
       return { success: false, message: 'Server returned invalid response. Check server logs.' };
     }
-  } catch (e) {
-    console.error('Submission error:', e);
+  } catch (error) {
+    console.error('Submission error:', error);
     return { success: false, message: 'Network error. Please try again.' };
   }
 }
@@ -174,89 +324,69 @@ async function fetchAndFillUserInfo() {
   } catch {}
 }
 
-document.addEventListener('DOMContentLoaded', function() {
-  // close confirm modal if any leftover class
+/* ===================== INIT ===================== */
+document.addEventListener('DOMContentLoaded', async function() {
+  // ensure confirm is closed
   document.getElementById('uiConfirm')?.classList.remove('is-open');
 
-  // dynamic price label + initial total
+  // price labels
+  const price = await fetchCedulaPrice();
   const perCopyText = document.getElementById('perCopyText');
-  if (perCopyText) {
-    const p = typeof window.CED_PRICE === 'number' ? window.CED_PRICE : 5;
-    perCopyText.textContent = `× ₱${p.toFixed(2)} per copy`;
-  }
-  calculateFee();
+  if (perCopyText) perCopyText.textContent = `× ₱${price.toFixed(2)} per copy`;
+  await calculateFee();
 
-  // File validation
-  const fileInput = document.getElementById('purokClearance');
-  fileInput?.addEventListener('change', function(e) {
-    const file = e.target.files[0];
-    const fileNameEl = document.getElementById('fileName');
-    const fileUploadErrorEl = document.getElementById('fileUploadError');
-
-    if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        if (fileUploadErrorEl) fileUploadErrorEl.textContent = 'File size exceeds 5MB limit';
-        if (fileUploadErrorEl) fileUploadErrorEl.style.display = 'block';
-        e.target.value = '';
-        if (fileNameEl) fileNameEl.textContent = 'No file chosen';
-        return;
-      }
-      const validTypes = ['image/jpeg','image/png','application/pdf'];
-      if (!validTypes.includes(file.type)) {
-        if (fileUploadErrorEl) fileUploadErrorEl.textContent = 'Invalid file type. Please upload JPG, PNG, or PDF';
-        if (fileUploadErrorEl) fileUploadErrorEl.style.display = 'block';
-        e.target.value = '';
-        if (fileNameEl) fileNameEl.textContent = 'No file chosen';
-        return;
-      }
-      if (fileNameEl) fileNameEl.textContent = file.name;
-      if (fileUploadErrorEl) fileUploadErrorEl.style.display = 'none';
-    } else {
-      if (fileNameEl) fileNameEl.textContent = 'No file chosen';
-    }
-  });
-
-  // qty changes => recalc
+  // qty -> fee
   document.getElementById('copyQuantity')?.addEventListener('input', calculateFee);
 
-  // nav
+  // nav: 1 -> 2
   document.getElementById('nextBtn1')?.addEventListener('click', function() {
-    if (validateSection('section1')) {
-      document.getElementById('section1')?.classList.remove('active');
-      document.getElementById('section2')?.classList.add('active');
-      document.getElementById('step1')?.classList.remove('active'); document.getElementById('step1')?.classList.add('completed');
-      document.getElementById('step2')?.classList.add('active');
-      document.getElementById('section2')?.focus();
-    }
+    if (!validateSection('section1')) return;
+    document.getElementById('section1')?.classList.remove('active');
+    document.getElementById('section2')?.classList.add('active');
+    document.getElementById('step1')?.classList.remove('active'); document.getElementById('step1')?.classList.add('completed');
+    document.getElementById('step2')?.classList.add('active');
   });
 
+  // 2 -> 3
   document.getElementById('nextBtn2')?.addEventListener('click', function() {
-    if (validateSection('section2')) {
-      document.getElementById('section2')?.classList.remove('active');
-      document.getElementById('section3')?.classList.add('active');
-      document.getElementById('step2')?.classList.remove('active'); document.getElementById('step2')?.classList.add('completed');
-      document.getElementById('step3')?.classList.add('active');
-      document.getElementById('section3')?.focus();
-    }
+    if (!validateSection('section2')) return;
+    document.getElementById('section2')?.classList.remove('active');
+    document.getElementById('section3')?.classList.add('active');
+    document.getElementById('step2')?.classList.remove('active'); document.getElementById('step2')?.classList.add('completed');
+    document.getElementById('step3')?.classList.add('active');
   });
 
+  // 3 -> 4 (build review)
+  document.getElementById('nextBtn3')?.addEventListener('click', function() {
+    if (!validateSection('section3')) return;
+    document.getElementById('section3')?.classList.remove('active');
+    document.getElementById('section4')?.classList.add('active');
+    document.getElementById('step3')?.classList.remove('active'); document.getElementById('step3')?.classList.add('completed');
+    document.getElementById('step4')?.classList.add('active');
+    renderReview();
+  });
+
+  // prev buttons
   document.getElementById('prevBtn1')?.addEventListener('click', function() {
     document.getElementById('section2')?.classList.remove('active');
     document.getElementById('section1')?.classList.add('active');
     document.getElementById('step1')?.classList.add('active');
     document.getElementById('step2')?.classList.remove('active'); document.getElementById('step2')?.classList.remove('completed');
-    document.getElementById('section1')?.focus();
   });
-
   document.getElementById('prevBtn2')?.addEventListener('click', function() {
     document.getElementById('section3')?.classList.remove('active');
     document.getElementById('section2')?.classList.add('active');
     document.getElementById('step2')?.classList.add('active');
     document.getElementById('step3')?.classList.remove('active'); document.getElementById('step3')?.classList.remove('completed');
-    document.getElementById('section2')?.focus();
+  });
+  document.getElementById('prevBtn3')?.addEventListener('click', function() {
+    document.getElementById('section4')?.classList.remove('active');
+    document.getElementById('section3')?.classList.add('active');
+    document.getElementById('step3')?.classList.add('active');
+    document.getElementById('step4')?.classList.remove('active'); document.getElementById('step4')?.classList.remove('completed');
   });
 
-  // Cancel with pretty confirm
+  // cancel
   document.getElementById('cancelBtn')?.addEventListener('click', async function () {
     const confirmed = await prettyConfirm({
       title: 'Cancel application?',
@@ -267,20 +397,30 @@ document.addEventListener('DOMContentLoaded', function() {
     if (confirmed) window.location.href = 'home.php';
   });
 
-  // Submit
+  // requirements toggles
+  setupRequirementUI();
+
+  // submit
   const formEl = document.getElementById('cedulaForm');
+  const svcTypeEl = document.getElementById('serviceType');
   formEl?.addEventListener('submit', async function(e) {
     e.preventDefault();
-    if (!validateSection('section3')) return;
+
+    // Ensure requirements valid even if user is on section4
+    if (!validateSection('section3')) {
+      document.getElementById('section4')?.classList.remove('active');
+      document.getElementById('section3')?.classList.add('active');
+      document.getElementById('step4')?.classList.remove('active');
+      document.getElementById('step3')?.classList.add('active');
+      return;
+    }
+    if (svcTypeEl) svcTypeEl.value = 'cedula';
 
     const submitBtn = document.getElementById('submitApplication');
     if (submitBtn) { submitBtn.disabled = true; submitBtn.innerHTML = '<span class="spinner"></span> Submitting...'; }
 
     try {
-      const formData = new FormData(this);
-      formData.set('copies', document.getElementById('copyQuantity')?.value || '1');
-      formData.set('service_type', 'cedula'); // enforce!
-
+      const formData = new FormData(this); // includes requirements[...] & req_method[...]
       const result = await submitForm(formData);
 
       if (result.success) {
@@ -309,6 +449,6 @@ document.addEventListener('DOMContentLoaded', function() {
     if (modal && event.target === modal) { modal.style.display = 'none'; document.body.style.overflow = 'auto'; window.location.href = 'home.php'; }
   });
 
-  // Autofill user (non-blocking)
+  // autofill user (non-blocking)
   fetchAndFillUserInfo();
 });

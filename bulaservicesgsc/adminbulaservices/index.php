@@ -73,35 +73,32 @@ button {
         <div id="login-error" style="color:red;margin-top:1rem;text-align:center;"></div>
       </form>
       <div class="login-footer">
-        <a href="#">Forgot password?</a>
+        <a href="#" id="forgotLink">Forgot password?</a>
       </div>
     </div>
   </div>
 
-  <!-- Change Password Modal -->
-  <div id="change-password-modal" class="modal" aria-hidden="true">
-    <div class="modal-content">
-      <h2>Change Your Password</h2>
-      <p style="margin-bottom:1rem;">You must change your password before continuing.</p>
+  <!-- Forgot Password Modal -->
+<div id="forgotModal" class="modal" aria-hidden="true">
+  <div class="modal-content">
+    <h2>Reset Admin Password</h2>
+    <p class="muted">Enter your admin email and we'll send you a reset link.</p>
 
-      <form id="change-password-form">
-        <div class="form-group">
-          <label>Current Password</label>
-          <input type="password" name="current_password" required>
-        </div>
-        <div class="form-group">
-          <label>New Password</label>
-          <input type="password" name="new_password" required>
-        </div>
-        <div class="form-group">
-          <label>Confirm Password</label>
-          <input type="password" name="confirm_password" required>
-        </div>
-        <div id="change-pass-error" class="error-text"></div>
-        <button type="submit" id="change-pass-btn" class="btn-primary">Update Password</button>
-      </form>
-    </div>
+    <form id="forgotForm" method="POST" novalidate>
+      <div class="form-group">
+        <label for="forgotEmail">Admin Email</label>
+        <input type="email" id="forgotEmail" name="email" class="form-control" required>
+      </div>
+
+      <div class="forgot-actions" style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+        <button type="button" class="btn btn-outline" id="forgotCancel" style="background: #f8f9fa; color: #6c757d; border: 1px solid #dee2e6;">Cancel</button>
+        <button type="submit" class="btn btn-primary">Send Reset Link</button>
+      </div>
+
+      <div id="forgotStatus" class="error-text" style="margin-top: 0.5rem; text-align: center;"></div>
+    </form>
   </div>
+</div>
 
   <script src="./script/login.js"></script>
 </body>

@@ -37,6 +37,24 @@ try {
 
 // Check if superadmin
 $is_superadmin = ($admin_role === 'superadmin');
+
+// --- Pending counters for badges ---
+$pending_services = 0;
+$pending_gym      = 0;
+
+try {
+    if (!isset($db)) { $db = getDBConnection(); }
+
+    // service_requests: pending
+    $stmt = $db->query("SELECT COUNT(*) FROM service_requests WHERE status = 'pending'");
+    $pending_services = (int)$stmt->fetchColumn();
+
+    // reservations: pending
+    $stmt = $db->query("SELECT COUNT(*) FROM reservations WHERE LOWER(COALESCE(status,'')) = 'pending'");
+    $pending_gym = (int)$stmt->fetchColumn();
+} catch (Throwable $e) {
+    // leave as 0 on error
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -91,8 +109,19 @@ $is_superadmin = ($admin_role === 'superadmin');
       <h2 class="section-title">Quick Actions</h2>
       <div class="actions-grid">
         <a href="Transaction.php" class="action-card"><i class="fas fa-file-invoice"></i><span>Transactions History</span></a>
-        <a href="request.php" class="action-card"><i class="fas fa-file-signature"></i><span>Service Requests</span></a>
-        <a href="gymrequest.php" class="action-card"><i class="fas fa-warehouse"></i><span>Gym Requests</span></a>
+        <a href="request.php" class="action-card has-badge">
+          <i class="fas fa-file-signature"></i><span>Service Requests</span>
+          <?php if ($pending_services > 0): ?>
+            <span class="notif-badge" aria-label="Pending service requests"><?= $pending_services ?></span>
+          <?php endif; ?>
+        </a>
+
+        <a href="gymrequest.php" class="action-card has-badge">
+          <i class="fas fa-warehouse"></i><span>Gym Requests</span>
+          <?php if ($pending_gym > 0): ?>
+            <span class="notif-badge" aria-label="Pending gym reservations"><?= $pending_gym ?></span>
+          <?php endif; ?>
+        </a>
         <a href="announcement.php" class="action-card"><i class="fas fa-bullhorn"></i><span>Announcements</span></a>
       </div>
     </div>

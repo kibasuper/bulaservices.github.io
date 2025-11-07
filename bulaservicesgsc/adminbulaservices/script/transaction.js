@@ -8,16 +8,18 @@ const closeDetailsBtn = document.getElementById('close-details-modal');
 const toast = document.getElementById('toast');
 const toastMessage = document.getElementById('toast-message');
 
-// Filter selects
+// Filter selects / inputs
 const periodSel = document.getElementById('time-period');
-const statusSel = document.getElementById('transaction-status');
 const typeSel   = document.getElementById('service-type');
+const statusSel = document.getElementById('transaction-status'); // simplified: all|completed|pending|rejected
+const searchInput = document.getElementById('transaction-search');
 
 let transactionsData = {};   // keyed by payment_id
 let lastRenderedRows = [];   // for export/print
 let pollTimer = null;
 let lastDigest = '';
 let currentTransaction = null;
+let searchTimer = null;
 
 document.addEventListener('DOMContentLoaded', function () {
   fetchTransactions(true);
@@ -30,7 +32,18 @@ document.addEventListener('DOMContentLoaded', function () {
   printReceiptBtn?.addEventListener('click', printReceipt);
   applyFiltersBtn?.addEventListener('click', () => fetchTransactions(true));
 
-  [periodSel, statusSel, typeSel].forEach(sel => sel?.addEventListener('change', () => fetchTransactions(true)));
+  // trigger fetch on time/type/status change
+  [periodSel, typeSel, statusSel].forEach(sel => sel?.addEventListener('change', () => fetchTransactions(true)));
+
+  // search: debounce to avoid excessive requests
+  if (searchInput) {
+    searchInput.addEventListener('input', () => {
+      if (searchTimer) clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => fetchTransactions(true), 350);
+    });
+    // also allow Enter to trigger immediate search
+    searchInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') { e.preventDefault(); fetchTransactions(true); }});
+  }
 
   startPolling();
 });
@@ -56,7 +69,7 @@ function renderStatus(status) {
   let cls = 'status-default';
   switch (normalized) {
     case 'completed':
-    case 'complete': cls = 'status-completed'; break; // normalize "complete"
+    case 'complete': cls = 'status-completed'; break;
     case 'paid':      cls = 'status-approved';  break;
     case 'pending':   cls = 'status-pending';   break;
     case 'approved':  cls = 'status-approved';  break;
@@ -119,19 +132,23 @@ function getRangeFromPeriod(label) {
   return { from: from.toISOString().slice(0,10), to: to.toISOString().slice(0,10) };
 }
 
-function mapStatusFilter(label) {
-  const v = (label || 'All Transactions').toLowerCase();
-  if (v.includes('finished') || v.includes('complete')) return 'completed';
-  if (v.includes('approved'))  return 'approved';
-  if (v.includes('rejected') || v.includes('cancel')) return 'rejected';
-  if (v.includes('pending'))   return 'pending';
-  return 'all';
-}
+function mapTypeFilter(labelOrValue) {
+  // If the select option provides canonical value (we set value attributes), return it directly.
+  if (!labelOrValue) return 'all';
+  const v = String(labelOrValue).trim().toLowerCase();
 
-function mapTypeFilter(label) {
-  const v = (label || 'All Services').toLowerCase();
-  if (v.includes('gym'))         return 'gym';
-  if (v.includes('certificate')) return 'cert';
+  // map some human choices just in case
+  if (v === 'all' || v === 'all services') return 'all';
+  if (v === 'gym' || v === 'gym services') return 'gym';
+
+  // canonical certificate keys (match your DB / server-side keys)
+  const allowed = [
+    'barangay_clearance','business_permit','cedula','ivs','indigency',
+    'residency','low_income','proof_income','other'
+  ];
+  if (allowed.includes(v)) return v;
+
+  // fallback to 'all'
   return 'all';
 }
 
@@ -150,18 +167,25 @@ function digestRows(rows) {
 async function fetchTransactions(resetDigest = false) {
   const periodLabel = periodSel?.value || 'All Time';
   const range = getRangeFromPeriod(periodLabel);
-  const status = mapStatusFilter(statusSel?.value);
-  const type   = mapTypeFilter(typeSel?.value);
+  const typeVal   = mapTypeFilter(typeSel?.value || typeSel?.selectedOptions?.[0]?.value);
+  const q = (searchInput?.value || '').trim();
+  const statusVal = (statusSel?.value || 'all').toLowerCase(); // only: all|completed|pending|rejected
 
   const params = new URLSearchParams();
   if (!range.allTime && range.from && range.to) { params.set('from', range.from); params.set('to', range.to); }
-  if (status !== 'all') params.set('status', status);
-  if (type !== 'all')   params.set('type', type);
+  if (typeVal !== 'all')   params.set('type', typeVal);
+  if (statusVal && statusVal !== 'all') params.set('status', statusVal);
+  if (q) params.set('q', q);
 
   const url = `./php/get_transactions.php${params.toString() ? ('?' + params.toString()) : ''}`;
 
   try {
     const res = await fetch(url, { cache: 'no-store' });
+    if (!res.ok) {
+      console.error('Fetch transactions failed', res.status, await res.text());
+      showToast('Failed to load transactions');
+      return;
+    }
     const data = await res.json();
     if (!Array.isArray(data)) return;
 
@@ -241,7 +265,6 @@ function viewTransaction(paymentId) {
     const raw = (r.status || '').toLowerCase();
     const display = raw === 'complete' ? 'Completed' : capitalize(r.status || '');
     const badge = renderStatus(raw || '');
-    // replace badge label if needed
     const fixedBadge = raw === 'complete' ? badge.replace(/>Complete</, '>Completed<') : badge;
     return `
       <tr>
@@ -291,25 +314,17 @@ function viewTransaction(paymentId) {
   toggleRowByFieldId('detail-releasedby', true);
 
   if (certOnly) {
-    // CERTIFICATE:
-    // Released By: shown
-    // Status: shows approver • date
-    // Approved By: hidden
     setText('detail-status', approvedText);   // label is "Status:"
     setText('detail-releasedby', releasedText);
     toggleRowByFieldId('detail-approvedby', false);
     toggleRowByFieldId('detail-status', true);
     toggleRowByFieldId('detail-releasedby', true);
   } else if (gymOnly) {
-    // GYM:
-    // Approved By: shown (approver • date)
-    // Hide Status & Released By
     setText('detail-approvedby', approvedText);
     toggleRowByFieldId('detail-approvedby', true);
     toggleRowByFieldId('detail-status', false);
     toggleRowByFieldId('detail-releasedby', false);
   } else {
-    // MIXED: keep previous behavior (show all)
     setText('detail-approvedby', approvedText);
     setText('detail-status', capitalize(tr.payment_status || '') || '—');
     setText('detail-releasedby', releasedText);

@@ -4,11 +4,153 @@ document.addEventListener('DOMContentLoaded', () => {
   const $  = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 
-  // ---- Cache modals ONCE (fixes "already declared") ----
   const reviewModal  = $('#reviewModal');
   const successModal = $('#successModal');
 
-  // Backdrop close
+  /* ===========================
+     0) Inject minimal CSS (JS-only)
+     =========================== */
+  (function injectStyles(){
+    const css = `
+      /* Clickable thumbs inside review modal */
+      .review-modal .attachments-section .thumb img,
+      .review-modal .attachments-section img {
+        cursor: zoom-in;
+        max-height: 120px;
+        object-fit: cover;
+        border-radius: 8px;
+      }
+      /* Lightbox base */
+      ._lb-overlay {
+        position: fixed;
+        inset: 0;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        background: rgba(0,0,0,.82);
+        z-index: 10000;
+        padding: 2rem;
+      }
+      ._lb-overlay.active { display: flex; }
+
+      /* Image lightbox */
+      ._lb-img {
+        max-width: 95vw;
+        max-height: 90vh;
+        border-radius: 10px;
+        box-shadow: 0 20px 60px rgba(0,0,0,.6);
+      }
+
+      /* PDF lightbox iframe */
+      ._lb-pdf-frame {
+        width: 95vw;
+        height: 90vh;
+        border: none;
+        background: #fff;
+        border-radius: 10px;
+        box-shadow: 0 20px 60px rgba(0,0,0,.6);
+      }
+
+      /* Close button */
+      ._lb-close {
+        position: absolute;
+        top: 14px;
+        right: 16px;
+        font-size: 28px;
+        line-height: 1;
+        background: #ffffff;
+        color: #111;
+        border: 0;
+        border-radius: 999px;
+        width: 40px;
+        height: 40px;
+        cursor: pointer;
+        display: grid;
+        place-items: center;
+        box-shadow: 0 6px 20px rgba(0,0,0,.25);
+      }
+
+      /* Make legacy single <img> previews clickable too */
+      .review-modal .attachments-section img[alt="Uploaded Document"] {
+        cursor: zoom-in;
+      }
+    `;
+    const style = document.createElement('style');
+    style.textContent = css;
+    document.head.appendChild(style);
+  })();
+
+  /* =========================================
+     1) Create lightboxes (image + PDF) in JS
+     ========================================= */
+  const imgOverlay  = document.createElement('div');
+  imgOverlay.className = '_lb-overlay';
+  imgOverlay.setAttribute('aria-hidden', 'true');
+  imgOverlay.innerHTML = `
+    <button type="button" class="_lb-close" aria-label="Close preview">&times;</button>
+    <img class="_lb-img" alt="Attachment preview"/>
+  `;
+  document.body.appendChild(imgOverlay);
+
+  const pdfOverlay  = document.createElement('div');
+  pdfOverlay.className = '_lb-overlay';
+  pdfOverlay.setAttribute('aria-hidden', 'true');
+  pdfOverlay.innerHTML = `
+    <button type="button" class="_lb-close" aria-label="Close PDF">&times;</button>
+    <iframe class="_lb-pdf-frame" title="PDF preview"></iframe>
+  `;
+  document.body.appendChild(pdfOverlay);
+
+  const imgNode     = $('._lb-img', imgOverlay);
+  const imgClose    = $('._lb-close', imgOverlay);
+  const pdfFrame    = $('._lb-pdf-frame', pdfOverlay);
+  const pdfClose    = $('._lb-close', pdfOverlay);
+
+  function openImageLightbox(src, alt) {
+    if (!src) return;
+    imgNode.src = src;
+    imgNode.alt = alt || 'Attachment preview';
+    imgOverlay.classList.add('active');
+    imgOverlay.setAttribute('aria-hidden', 'false');
+    document.body.style.overflow = 'hidden';
+  }
+  function closeImageLightbox() {
+    imgOverlay.classList.remove('active');
+    imgOverlay.setAttribute('aria-hidden', 'true');
+    imgNode.src = '';
+    document.body.style.overflow = '';
+  }
+  function openPdfLightbox(url) {
+    if (!url) return;
+    // Let the server stream the PDF; we just embed it.
+    pdfFrame.src = url;
+    pdfOverlay.classList.add('active');
+    pdfOverlay.setAttribute('aria-hidden', 'false');
+    document.body.style.overflow = 'hidden';
+  }
+  function closePdfLightbox() {
+    pdfOverlay.classList.remove('active');
+    pdfOverlay.setAttribute('aria-hidden', 'true');
+    // Reset to stop PDF from keeping focus/resources
+    pdfFrame.src = 'about:blank';
+    document.body.style.overflow = '';
+  }
+
+  // Close interactions
+  imgOverlay.addEventListener('click', (e) => {
+    if (e.target === imgOverlay || e.target === imgClose) closeImageLightbox();
+  });
+  pdfOverlay.addEventListener('click', (e) => {
+    if (e.target === pdfOverlay || e.target === pdfClose) closePdfLightbox();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && imgOverlay.classList.contains('active')) closeImageLightbox();
+    if (e.key === 'Escape' && pdfOverlay.classList.contains('active')) closePdfLightbox();
+  });
+
+  /* ======================
+     2) Existing modal glue
+     ====================== */
   if (reviewModal) {
     reviewModal.addEventListener('click', (e) => {
       if (e.target === e.currentTarget) closeReviewModal();
@@ -20,7 +162,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // ---- Confirm modal builder (uses your CSS) ----
   function ensureConfirmModal() {
     let el = $('#confirmModal');
     if (el) return el;
@@ -48,12 +189,10 @@ document.addEventListener('DOMContentLoaded', () => {
     `;
     document.body.appendChild(el);
 
-    // Backdrop close
     el.addEventListener('click', (e) => {
       if (e.target === e.currentTarget) el.classList.remove('active');
     });
 
-    // ESC + focus trap
     document.addEventListener('keydown', (e) => {
       if (!el.classList.contains('active')) return;
       if (e.key === 'Escape') el.classList.remove('active');
@@ -80,7 +219,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const cancelBtn = el.querySelector('#confirmCancel');
     const okBtn     = el.querySelector('#confirmOk');
 
-    // Reset listeners by cloning OK button
     const okFresh = okBtn.cloneNode(true);
     okBtn.parentNode.replaceChild(okFresh, okBtn);
 
@@ -94,7 +232,99 @@ document.addEventListener('DOMContentLoaded', () => {
     setTimeout(() => card?.focus?.(), 0);
   }
 
-  // ---- Public API (attach to window so onclick works) ----
+  /* ============================
+     3) Requirements HTML builder
+     ============================ */
+  function renderRequirements(requirements, legacyUrl) {
+    // Nothing: show N/A
+    if (!Array.isArray(requirements) || requirements.length === 0) {
+      if (legacyUrl) {
+        const isPDF = /\.pdf(?:[#?].*)?$/i.test(legacyUrl);
+        return `
+          <div class="attachments-section">
+            <h4>Uploaded Document (legacy)</h4>
+            ${isPDF ? `<p><a href="${legacyUrl}" target="_blank" rel="noopener"><i class="fas fa-file-pdf"></i> Open PDF</a></p>`
+                     : `<img src="${legacyUrl}" alt="Uploaded Document">`}
+          </div>
+        `;
+      }
+      return `<div class="attachments-section"><h4>Requirements</h4><p>N/A</p></div>`;
+    }
+
+    const cards = requirements.map((r) => {
+      const label  = r.label || r.key;
+      const method = (r.method || '').toLowerCase();
+      const url    = r.url || null;
+      const isPDF  = url ? /\.pdf(?:[#?].*)?$/i.test(url) : false;
+
+      // Method visuals
+      const methodBadge =
+        method === 'upload' ? `<span class="badge badge-upload"><i class="fas fa-upload"></i> Upload</span>` :
+        method === 'hall'   ? `<span class="badge badge-hall"><i class="fas fa-building"></i> Bring to Hall</span>` :
+                              `<span class="badge"><i class="fas fa-question-circle"></i> Unknown</span>`;
+
+      // Preview/link
+      let preview = `<p class="muted">No file provided</p>`;
+      if (method === 'upload' && url) {
+        preview = isPDF
+          ? `<p><a class="pdf-link" href="${url}" target="_blank" rel="noopener"><i class="fas fa-file-pdf"></i> Open PDF</a></p>`
+          : `<div class="thumb"><img src="${url}" alt="${label}"></div>`;
+      }
+
+      return `
+        <div class="req-card">
+          <div class="req-card__header">
+            <div class="req-card__title"><i class="fas fa-paperclip"></i> ${label}</div>
+            ${methodBadge}
+          </div>
+          <div class="req-card__body">
+            ${preview}
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    return `
+      <div class="attachments-section">
+        <h4>Requirements</h4>
+        <div class="req-grid">
+          ${cards}
+        </div>
+      </div>
+    `;
+  }
+
+  /* ======================================
+     4) Image/PDF lightbox event delegation
+     ====================================== */
+  // Works for any review modal content (even after re-render)
+  reviewModal?.addEventListener('click', (e) => {
+    // 4a) Image click → open image lightbox
+    const img = e.target.closest('.attachments-section img, .req-grid img, .thumb img');
+    if (img) {
+      e.preventDefault();
+      openImageLightbox(img.getAttribute('src'), img.getAttribute('alt') || 'Attachment');
+      return;
+    }
+
+    // 4b) PDF link click → open PDF lightbox in overlay (instead of new tab)
+    const a = e.target.closest('.attachments-section a, .req-grid a, .pdf-link');
+    if (a) {
+      const href = a.getAttribute('href') || '';
+      // Detect PDFs either by extension or by link text/icon
+      const looksPdf = /\.pdf(?:[#?].*)?$/i.test(href) ||
+                       a.textContent.toLowerCase().includes('pdf') ||
+                       (a.querySelector('i') && a.querySelector('i').className.includes('fa-file-pdf'));
+      if (looksPdf) {
+        e.preventDefault();
+        openPdfLightbox(href);
+      }
+    }
+  });
+
+  /* =====================================
+     5) Public: open the Review modal (API)
+     ===================================== */
   window.reviewRequest = async function (ref) {
     try {
       const response = await fetch(`./php/get_request_details.php?ref=${encodeURIComponent(ref)}`, {
@@ -108,22 +338,9 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       const request = data.request;
-      if (!request) {
-        alert('Request not found');
-        return;
-      }
+      if (!request) { alert('Request not found'); return; }
 
-      const isPDF = !!request.document_url && /\.pdf(?:[#?].*)?$/i.test(request.document_url);
-      const attachmentsSection = request.document_url
-        ? `
-          <div class="attachments-section">
-            <h4>Uploaded Document</h4>
-            ${isPDF
-              ? `<p><a href="${request.document_url}" target="_blank" rel="noopener">Open PDF in new tab</a></p>`
-              : `<img src="${request.document_url}" alt="Uploaded Document">`
-            }
-          </div>`
-        : `<div class="attachments-section"><h4>Uploaded Document</h4>N/A</div>`;
+      const requirementsSection = renderRequirements(request.requirements, request.document_url);
 
       const modalContent = `
         <div class="modal-card review-modal" role="dialog" aria-modal="true" tabindex="-1">
@@ -145,7 +362,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 <span class="status-badge status-${String(request.status || '').toLowerCase()}">${request.status || ''}</span>
               </span>
             </div>
-            ${attachmentsSection}
+
+            ${requirementsSection}
           </div>
           <div class="modal-actions">
             <button class="modal-btn close-btn" onclick="closeReviewModal()"><i class="fas fa-times"></i> Close</button>
@@ -155,11 +373,7 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>
       `;
 
-      if (!reviewModal) {
-        console.error('Missing #reviewModal container in DOM');
-        alert('Review modal container not found in page.');
-        return;
-      }
+      if (!reviewModal) { alert('Review modal container not found in page.'); return; }
 
       reviewModal.innerHTML = modalContent;
       reviewModal.classList.add('active');
@@ -259,6 +473,5 @@ document.addEventListener('DOMContentLoaded', () => {
     successModal.classList.add('active');
   };
 
-  // Keep this global so your HTML onclick="refreshPage()" works
   window.refreshPage = function () { location.reload(); };
 });

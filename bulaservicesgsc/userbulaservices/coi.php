@@ -20,6 +20,7 @@ if (empty($user)) {
 /* Live price for Indigency (type_code = 'indigency') */
 try {
     $db  = getDBConnection();
+    if ($db instanceof PDO) $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     $stmt = $db->prepare("SELECT price FROM certificate_pricing WHERE type_code = ? LIMIT 1");
     $stmt->execute(['indigency']);
     $row  = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -62,7 +63,8 @@ try {
         <div class="progress-steps">
           <div class="step active" id="step1"><div class="step-number">1</div><div class="step-label">Personal Information</div></div>
           <div class="step" id="step2"><div class="step-number">2</div><div class="step-label">Purpose & Fees</div></div>
-          <div class="step" id="step3"><div class="step-number">3</div><div class="step-label">Review & Submit</div></div>
+          <div class="step" id="step3"><div class="step-number">3</div><div class="step-label">Requirements Upload</div></div>
+          <div class="step" id="step4"><div class="step-number">4</div><div class="step-label">Review & Submit</div></div>
         </div>
 
         <div class="form-header">
@@ -70,9 +72,9 @@ try {
           <p>Fill out the form to request a Certificate of Indigency</p>
         </div>
 
-        <form id="indigencyForm" enctype="multipart/form-data">
+        <form id="indigencyForm" enctype="multipart/form-data" novalidate>
           <input type="hidden" name="csrf_token" value="<?= e($csrfToken) ?>">
-          <input type="hidden" name="service_type" value="indigency">
+          <input type="hidden" name="service_type" id="serviceType" value="indigency">
 
           <!-- Section 1 -->
           <div class="form-section active" id="section1" aria-labelledby="step1">
@@ -129,7 +131,7 @@ try {
                 <label for="otherPurpose">Other Purpose</label>
               </div>
 
-              <div class="other-purpose-container" id="otherPurposeContainer">
+              <div class="other-purpose-container" id="otherPurposeContainer" style="display:none;">
                 <label for="specifyPurpose">Please specify purpose*</label>
                 <input type="text" id="specifyPurpose" name="purpose_details" class="form-control">
                 <div class="error-message" id="specifyPurposeError">Please specify your purpose</div>
@@ -143,7 +145,7 @@ try {
               <div class="form-group">
                 <label for="copyQuantity">Number of Copies Needed</label>
                 <div class="copy-quantity">
-                  <input type="number" id="copyQuantity" name="copies" class="form-control" min="1" max="5" value="1">
+                  <input type="number" id="copyQuantity" name="copies" class="form-control" min="1" max="5" value="1" inputmode="numeric">
                   <span id="perCopyText">× ₱<?= number_format($IND_PRICE, 2) ?> per copy</span>
                 </div>
               </div>
@@ -158,41 +160,82 @@ try {
             </div>
           </div>
 
-          <!-- Section 3 -->
+          <!-- Section 3: Requirements (per-req radios + upload) -->
           <div class="form-section" id="section3" aria-labelledby="step3">
             <div class="document-options">
-              <label style="display:block;margin-bottom:.5rem;font-weight:500;color:#2c3e50;">Purok Clearance Submission Method*</label>
+              <label style="display:block;margin-bottom:.5rem;font-weight:500;color:#2c3e50;">Requirements (choose method for each)</label>
 
-              <div class="document-option" onclick="selectDocumentOption('upload')" tabindex="0" role="button" aria-pressed="false">
-                <input type="radio" id="uploadOption" name="document_method" value="upload" required>
-                <label for="uploadOption">Upload Purok Clearance Online</label>
-                <div class="file-upload-container" id="uploadContainer">
-                  <input type="file" id="purokClearance" name="purok_clearance" class="file-upload-input" accept="image/*,.pdf" aria-describedby="fileUploadHelp">
-                  <label for="purokClearance" class="file-upload-button"><i class="fas fa-upload"></i> Choose File (JPG, PNG, PDF, max 5MB)</label>
-                  <div class="file-upload-name" id="fileName">No file chosen</div>
-                  <div class="error-message" id="fileUploadError">Please upload your purok clearance</div>
-                  <p class="note" id="fileUploadHelp">Maximum file size: 5MB. Accepted formats: JPG, PNG, PDF</p>
+              <!-- Purok Clearance -->
+              <div class="req-block" data-key="purok_clearance">
+                <div class="req-title"><i class="fas fa-file"></i> Purok Clearance*</div>
+                <div class="req-method">
+                  <label><input type="radio" name="req_method[purok_clearance]" value="upload" required> Upload now</label>
+                  <label><input type="radio" name="req_method[purok_clearance]" value="hall"> Bring to Hall</label>
+                </div>
+                <div class="file-upload-container" id="req_ui_purok_clearance" style="display:none">
+                  <input type="file" id="req_purok_clearance" name="requirements[purok_clearance]" class="file-upload-input" accept="image/*,.pdf" aria-describedby="purokHelp">
+                  <label for="req_purok_clearance" class="file-upload-button"><i class="fas fa-upload"></i> Choose File (JPG, PNG, PDF, max 5MB)</label>
+                  <div class="file-upload-name" id="name_req_purok_clearance">No file chosen</div>
+                  <div class="error-message" id="err_req_purok_clearance">Please upload your Purok Clearance</div>
+                  <p class="note" id="purokHelp">Maximum file size: 5MB. Accepted formats: JPG, PNG, PDF</p>
                 </div>
               </div>
 
-              <div class="document-option" onclick="selectDocumentOption('hall')" tabindex="0" role="button" aria-pressed="false">
-                <input type="radio" id="hallOption" name="document_method" value="hall">
-                <label for="hallOption">Bring Purok Clearance to Barangay Hall</label>
-                <div class="bring-to-hall-info" id="hallInfo">
-                  <p><i class="fas fa-info-circle"></i> Please bring your purok clearance to:</p>
-                  <p><strong>Barangay Bula Hall</strong></p>
-                  <p>Open Monday–Friday, 8:00 AM – 5:00 PM</p>
-                  <p>Saturday, 8:00 AM – 12:00 PM</p>
+              <!-- Valid ID -->
+              <div class="req-block" data-key="valid_id">
+                <div class="req-title"><i class="fas fa-id-card"></i> Valid ID (Government-issued)*</div>
+                <div class="req-method">
+                  <label><input type="radio" name="req_method[valid_id]" value="upload" required> Upload now</label>
+                  <label><input type="radio" name="req_method[valid_id]" value="hall"> Bring to Hall</label>
+                </div>
+                <div class="file-upload-container" id="req_ui_valid_id" style="display:none">
+                  <input type="file" id="req_valid_id" name="requirements[valid_id]" class="file-upload-input" accept="image/*,.pdf" aria-describedby="validIdHelp">
+                  <label for="req_valid_id" class="file-upload-button"><i class="fas fa-upload"></i> Choose File (JPG, PNG, PDF, max 5MB)</label>
+                  <div class="file-upload-name" id="name_req_valid_id">No file chosen</div>
+                  <div class="error-message" id="err_req_valid_id">Please upload a Valid ID</div>
+                  <p class="note" id="validIdHelp">Maximum file size: 5MB. Accepted formats: JPG, PNG, PDF</p>
                 </div>
               </div>
-              <div class="error-message" id="documentMethodError">Please select a submission method</div>
+
+              <!-- Proof of Residence -->
+              <div class="req-block" data-key="proof_of_residence">
+                <div class="req-title"><i class="fas fa-home"></i> Proof of Residence (utility bill, lease, etc.)*</div>
+                <div class="req-method">
+                  <label><input type="radio" name="req_method[proof_of_residence]" value="upload" required> Upload now</label>
+                  <label><input type="radio" name="req_method[proof_of_residence]" value="hall"> Bring to Hall</label>
+                </div>
+                <div class="file-upload-container" id="req_ui_proof_of_residence" style="display:none">
+                  <input type="file" id="req_proof_of_residence" name="requirements[proof_of_residence]" class="file-upload-input" accept="image/*,.pdf" aria-describedby="porHelp">
+                  <label for="req_proof_of_residence" class="file-upload-button"><i class="fas fa-upload"></i> Choose File (JPG, PNG, PDF, max 5MB)</label>
+                  <div class="file-upload-name" id="name_req_proof_of_residence">No file chosen</div>
+                  <div class="error-message" id="err_req_proof_of_residence">Please upload Proof of Residence</div>
+                  <p class="note" id="porHelp">Maximum file size: 5MB. Accepted formats: JPG, PNG, PDF</p>
+                </div>
+              </div>
+
+              <!-- Cedula -->
+              <div class="req-block" data-key="cedula">
+                <div class="req-title"><i class="fas fa-file-invoice-dollar"></i> Community Tax Certificate (Cedula)*</div>
+                <div class="req-method">
+                  <label><input type="radio" name="req_method[cedula]" value="upload" required> Upload now</label>
+                  <label><input type="radio" name="req_method[cedula]" value="hall"> Bring to Hall</label>
+                </div>
+                <div class="file-upload-container" id="req_ui_cedula" style="display:none">
+                  <input type="file" id="req_cedula" name="requirements[cedula]" class="file-upload-input" accept="image/*,.pdf" aria-describedby="cedHelp">
+                  <label for="req_cedula" class="file-upload-button"><i class="fas fa-upload"></i> Choose File (JPG, PNG, PDF, max 5MB)</label>
+                  <div class="file-upload-name" id="name_req_cedula">No file chosen</div>
+                  <div class="error-message" id="err_req_cedula">Please upload Cedula</div>
+                  <p class="note" id="cedHelp">Maximum file size: 5MB. Accepted formats: JPG, PNG, PDF</p>
+                </div>
+              </div>
+
+              <div class="error-message" id="documentMethodError">Please select a method for each requirement</div>
             </div>
 
             <div class="processing-info">
               <h4><i class="fas fa-clock"></i> Processing Information</h4>
               <p><strong>Processing Time:</strong> 1–3 business days</p>
               <p>You will receive an e-mail notification once your certificate is ready for pickup.</p>
-              <p class="note">Note: Processing may take longer during peak periods.</p>
             </div>
 
             <div class="walkin-hours">
@@ -205,6 +248,40 @@ try {
 
             <div class="nav-buttons">
               <button type="button" class="btn btn-secondary" id="prevBtn2"><i class="fas fa-arrow-left"></i> Previous</button>
+              <button type="button" class="btn" id="nextBtn3">Next <i class="fas fa-arrow-right"></i></button>
+            </div>
+          </div>
+
+          <!-- Section 4: Review & Submit -->
+          <div class="form-section" id="section4" aria-labelledby="step4">
+            <div class="review-wrap">
+              <h4><i class="fas fa-eye"></i> Review your request</h4>
+
+              <div class="review-grid">
+                <div class="review-card">
+                  <h5>Personal Information</h5>
+                  <ul class="review-list" id="revPersonal"></ul>
+                </div>
+
+                <div class="review-card">
+                  <h5>Purpose & Copies</h5>
+                  <ul class="review-list" id="revPurpose"></ul>
+                </div>
+
+                <div class="review-card">
+                  <h5>Requirements</h5>
+                  <div id="revReqs" class="review-reqs"></div>
+                </div>
+
+                <div class="review-card total">
+                  <h5>Total Fee</h5>
+                  <div class="fee-big">₱<span id="revTotal">0.00</span></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="nav-buttons">
+              <button type="button" class="btn btn-secondary" id="prevBtn3"><i class="fas fa-arrow-left"></i> Previous</button>
               <button type="submit" id="submitApplication" class="btn"><i class="fas fa-paper-plane"></i> Submit Application</button>
             </div>
           </div>
@@ -250,7 +327,16 @@ try {
     </div>
   </div>
 
-  <script>window.INDIGENCY_PRICE = <?= json_encode((float)$IND_PRICE) ?>;</script>
-  <script src="./script/coi.js?v=3"></script>
+  <script>
+    window.PRICE_TYPE = 'indigency';
+    window.INDIGENCY_PRICE = <?= json_encode((float)$IND_PRICE) ?>;
+    window.REQUIRED_REQS = [
+      { key: 'purok_clearance',     label: 'Purok Clearance' },
+      { key: 'valid_id',            label: 'Valid ID (Government-issued)' },
+      { key: 'proof_of_residence',  label: 'Proof of Residence' },
+      { key: 'cedula',              label: 'Community Tax Certificate (Cedula)' }
+    ];
+  </script>
+  <script src="./script/coi.js?v=5"></script>
 </body>
 </html>

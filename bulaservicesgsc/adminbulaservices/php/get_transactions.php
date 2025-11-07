@@ -29,8 +29,11 @@ try {
 
   $from   = isset($_GET['from']) ? trim((string)$_GET['from']) : '';
   $to     = isset($_GET['to'])   ? trim((string)$_GET['to'])   : '';
-  $type   = isset($_GET['type']) ? strtolower((string)$_GET['type']) : 'all'; // gym|cert|all
+  $type   = isset($_GET['type']) ? strtolower(trim((string)$_GET['type'])) : 'all';
+  $q      = isset($_GET['q']) ? trim((string)$_GET['q']) : '';
+  $status = isset($_GET['status']) ? strtolower(trim((string)$_GET['status'])) : 'all';
 
+  // pick best date column on payments table
   $dateCols = ['created_at','paid_at','updated_at','payment_date','timestamp','date_created'];
   $payDateCol = null;
   foreach ($dateCols as $c) { if (colExists($db,'payments',$c)) { $payDateCol=$c; break; } }
@@ -39,17 +42,38 @@ try {
   $params = [];
   if ($payDateCol) {
     if ($from !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/',$from)) {
-      $where[] = "DATE(p.`$payDateCol`) >= ?"; $params[] = $from;
+      $where[] = "DATE(p.`$payDateCol`) >= ?";
+      $params[] = $from;
     }
     if ($to !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/',$to)) {
-      $where[] = "p.`$payDateCol` <= ?"; $params[] = $to.' 23:59:59';
+      $where[] = "DATE(p.`$payDateCol`) <= ?";
+      $params[] = $to;
     }
   }
 
-  // Canonical SR types
-  $SR_TYPES = "('barangay_clearance','business_permit','indigency','residency','cedula','ivs','low_income','proof_income','gym','other')";
+  if ($q !== '') {
+    $escaped = str_replace(['\\','%','_'], ['\\\\','\\%','\\_'], $q);
+    $like = '%' . $escaped . '%';
 
-  // Conditional joins prevent ID collisions
+    $where[] = "(
+        p.receipt_number LIKE ? OR
+        CONCAT_WS(' ', u.first_name, u.last_name) LIKE ? OR
+        u.first_name LIKE ? OR
+        u.last_name LIKE ? OR
+        sr.reference_number LIKE ? OR
+        rs.reference_number LIKE ? OR
+        sr.service_type LIKE ?
+      )";
+    for ($i=0;$i<7;$i++) $params[] = $like;
+  }
+
+  $SR_TYPES = [
+    'barangay_clearance','business_permit','indigency','residency',
+    'cedula','ivs','low_income','proof_income','other'
+  ];
+
+  // Note: we explicitly select sr.paid_at and rs.paid_at and sr.rejected_reason so we can
+  // use them to decide statuses reliably.
   $sql = "
     SELECT
       p.id                  AS payment_id,
@@ -65,34 +89,35 @@ try {
       ca.first_name         AS cashier_first,
       ca.last_name          AS cashier_last,
 
-      -- link items
+      -- payment item
       pi.id                 AS payment_item_id,
       pi.request_type       AS pi_request_type,
       pi.request_id,
 
-      -- service requests (only when pi.request_type is SR-type)
+      -- service_requests (selected fields)
       sr.id                 AS sr_id,
       sr.reference_number   AS sr_ref,
       sr.status             AS sr_status,
       sr.service_type       AS sr_service_type,
       sr.purpose            AS sr_purpose,
+      sr.paid_at            AS sr_paid_at,
       sr.claimed_by         AS sr_claimed_by,
       sr.claimed_at         AS sr_claimed_at,
       sr.approved_by        AS sr_approved_by,
       sr.approved_date      AS sr_approved_date,
+      sr.rejected_reason    AS sr_rejected_reason,
 
-      -- approver
+      -- approver / releaser names
       ap.first_name         AS approver_first,
       ap.last_name          AS approver_last,
-
-      -- releaser
       ra.first_name         AS releaser_first,
       ra.last_name          AS releaser_last,
 
-      -- reservations (only when pi.request_type = 'gym_reservation')
+      -- reservations (selected fields)
       rs.id                 AS rs_id,
       rs.reference_number   AS rs_ref,
       rs.status             AS rs_status,
+      rs.paid_at            AS rs_paid_at,
       rs.resident_name      AS rs_resident_name,
       rs.contact_number     AS rs_contact_number,
 
@@ -104,17 +129,15 @@ try {
     JOIN payment_items pi
       ON pi.payment_id = p.id
 
-    -- Conditionally join SRs
     LEFT JOIN service_requests sr
       ON sr.id = pi.request_id
-     AND pi.request_type IN $SR_TYPES
+     AND pi.request_type IN ('".implode("','",$SR_TYPES)."')
 
     LEFT JOIN admins ra
-      ON ra.admin_id = sr.claimed_by       -- releaser
+      ON ra.admin_id = sr.claimed_by
     LEFT JOIN admins ap
-      ON ap.admin_id = sr.approved_by      -- approver
+      ON ap.admin_id = sr.approved_by
 
-    -- Conditionally join reservations
     LEFT JOIN reservations rs
       ON rs.id = pi.request_id
      AND pi.request_type = 'gym_reservation'
@@ -122,12 +145,21 @@ try {
     LEFT JOIN users u
       ON u.id = p.user_id
     LEFT JOIN admins ca
-      ON ca.admin_id = p.cashier_id        -- cashier
+      ON ca.admin_id = p.cashier_id
   ";
 
   if (!empty($where)) $sql .= " WHERE ".implode(" AND ", $where);
-  if ($type === 'gym')  { $sql .= (empty($where)?" WHERE ":" AND ")." pi.request_type = 'gym_reservation' "; }
-  if ($type === 'cert') { $sql .= (empty($where)?" WHERE ":" AND ")." pi.request_type <> 'gym_reservation' "; }
+
+  if ($type === 'gym') {
+    $sql .= (empty($where) ? " WHERE " : " AND ") . " pi.request_type = 'gym_reservation' ";
+  } elseif (in_array($type, $SR_TYPES, true)) {
+    $sql .= (empty($where) ? " WHERE " : " AND ") . " LOWER(sr.service_type) = ? ";
+    $params[] = strtolower($type);
+  } elseif ($type === 'other') {
+    $placeholders = implode(',', array_fill(0, count($SR_TYPES), '?'));
+    $sql .= (empty($where) ? " WHERE " : " AND ") . " (sr.service_type IS NULL OR LOWER(sr.service_type) NOT IN ($placeholders)) ";
+    foreach ($SR_TYPES as $s) $params[] = strtolower($s);
+  }
 
   $sql .= " ORDER BY ".($payDateCol ? "p.`$payDateCol` DESC" : "p.id DESC").", pi.id ASC";
 
@@ -176,24 +208,61 @@ try {
       ];
     }
 
-    $isGym   = (strtolower((string)$r['pi_request_type']) === 'gym_reservation');
-    $lineRef = $isGym ? $r['rs_ref'] : $r['sr_ref'];
-    $lineSta = strtolower((string)($isGym ? $r['rs_status'] : $r['sr_status']));
-    $svcType = $isGym
-      ? 'Gym'
-      : ($r['sr_service_type'] ?: 'Certificate');
+    // determine whether this payment_item is a gym reservation or a certificate/service request
+    $isGym = (strtolower((string)$r['pi_request_type']) === 'gym_reservation');
+
+    // Determine the raw line status more defensively:
+    // prefer the explicit status column if present; otherwise infer from paid_at / other markers.
+    $rawStatus = null;
+    if ($isGym) {
+      $rs_status = $r['rs_status'] ?? null;
+      $rs_paid   = !empty($r['rs_paid_at']);
+      if ($rs_status !== null && $rs_status !== '') $rawStatus = $rs_status;
+      elseif ($rs_paid) $rawStatus = 'paid';
+      else $rawStatus = ''; // empty -> will be treated as pending later
+    } else {
+      $sr_status = $r['sr_status'] ?? null;
+      $sr_paid   = !empty($r['sr_paid_at']);
+      if ($sr_status !== null && $sr_status !== '') $rawStatus = $sr_status;
+      elseif ($sr_paid) $rawStatus = 'paid';
+      else $rawStatus = ''; // empty -> pending
+    }
+    $lineSta = strtolower((string)$rawStatus);
+
+    // Normalize common variations (some DB values show uppercase or synonyms)
+    $normMap = [
+      'paid'      => 'paid',
+      'completed' => 'completed',
+      'complete'  => 'completed',
+      'released'  => 'completed',
+      'claimed'   => 'completed',
+      'approved'  => 'approved',
+      'processing'=> 'approved',
+      'pending'   => 'pending',
+      'reject'    => 'rejected',
+      'rejected'  => 'rejected',
+      'cancelled' => 'rejected',
+      'canceled'  => 'rejected',
+      'void'      => 'rejected'
+    ];
+    if (isset($normMap[$lineSta])) $lineSta = $normMap[$lineSta];
+    // if still empty, default to 'pending'
+    if ($lineSta === '') $lineSta = 'pending';
+
+    $svcType = $isGym ? 'Gym' : ($r['sr_service_type'] ?: 'Certificate');
 
     $desc = $isGym
       ? ('Gym Reservation '.($r['rs_ref'] ? '#'.$r['rs_ref'] : ''))
       : ($r['sr_purpose'] ?: $svcType);
 
-    $paidish     = ['paid','completed','released','claimed'];
-    $approvedish = ['approved','processing'];
-    $rejectedish = ['rejected','cancelled','canceled','void'];
+    // categories for payment-level summary
+    $paidish     = ['paid','completed'];      // any of these means the line is paid/completed
+    $approvedish = ['approved'];
+    $rejectedish = ['rejected'];
 
-    if (!in_array($lineSta,$paidish,true))        $byPay[$pid]['_all_paid']     = false;
-    if (in_array($lineSta,$approvedish,true))     $byPay[$pid]['_any_approved'] = true;
-    if (in_array($lineSta,$rejectedish,true))     $byPay[$pid]['_any_rejected'] = true;
+    if (!in_array($lineSta, $paidish, true))        $byPay[$pid]['_all_paid']     = false;
+    if (in_array($lineSta, $approvedish, true))    $byPay[$pid]['_any_approved'] = true;
+    if (in_array($lineSta, $rejectedish, true))    $byPay[$pid]['_any_rejected'] = true;
 
     // approver (SR only)
     if (!$isGym && !empty($r['sr_approved_by'])) {
@@ -202,7 +271,7 @@ try {
       if (!empty($r['sr_approved_date'])) $byPay[$pid]['_approver_dates'][] = $r['sr_approved_date'];
     }
 
-    // releaser (SR only)
+    // releaser (SR only) — use claimed_by/claimed_at as releaser indicators when present
     $releasedByName = null;
     $releasedAt     = null;
     if (!$isGym) {
@@ -212,21 +281,39 @@ try {
 
       if ($releasedByName) $byPay[$pid]['_releaser_names'][$releasedByName] = true;
       if ($releasedAt)     $byPay[$pid]['_releaser_dates'][] = $releasedAt;
+    } else {
+      // for gym reservations, if rs_paid_at exists we can use that as released_at summary later
+      if (!empty($r['rs_paid_at'])) {
+        $byPay[$pid]['_releaser_dates'][] = $r['rs_paid_at'];
+        // optionally add a releaser name placeholder? leave null unless you record released_by_admin_id
+      }
     }
 
+    // include rejected_reason for visibility
+    $rejectedReason = $r['sr_rejected_reason'] ?? null;
+
     $byPay[$pid]['requests'][] = [
-      'transaction_no'    => $lineRef ?: null,
+      'transaction_no'    => $isGym ? ($r['rs_ref'] ?: null) : ($r['sr_ref'] ?: null),
       'service_type'      => $svcType,
       'description'       => $desc,
       'status'            => $lineSta ?: 'pending',
       'released_by_name'  => $releasedByName,
       'released_at'       => $releasedAt,
       'claimed_by_admin'  => $r['sr_claimed_by'] ?: null,
-      'claimed_at'        => $r['sr_claimed_at'] ?: null
+      'claimed_at'        => $r['sr_claimed_at'] ?: null,
+      'rejected_reason'   => $rejectedReason ?: null,
+      // raw row can be useful for debugging on client — remove if you don't want it sent
+      '_raw'               => [
+        'pi_request_type' => $r['pi_request_type'] ?? null,
+        'sr_id' => $r['sr_id'] ?? null,
+        'rs_id' => $r['rs_id'] ?? null,
+        'sr_paid_at' => $r['sr_paid_at'] ?? null,
+        'rs_paid_at' => $r['rs_paid_at'] ?? null
+      ]
     ];
   }
 
-  // summarize
+  // summarize into output array
   $out = [];
   foreach ($byPay as $p) {
     if ($p['_any_rejected'])      { $p['payment_status'] = 'rejected'; }
@@ -257,6 +344,29 @@ try {
           $p['_releaser_names'], $p['_releaser_dates']);
 
     $out[] = $p;
+  }
+
+  // --------------------
+  // FILTER BY STATUS (simplified)
+  // --------------------
+  if (!empty($status) && $status !== 'all') {
+    $allowedStatus = ['completed','pending','rejected','paid'];
+    if (!in_array($status, $allowedStatus, true)) {
+      $out = [];
+    } else {
+      $map = [
+        'paid'      => ['completed','paid','released','claimed'],
+        'completed' => ['completed','paid','released','claimed'],
+        'pending'   => ['pending'],
+        'rejected'  => ['rejected','cancelled','canceled','void']
+      ];
+      $wanted = $map[$status] ?? [$status];
+      $wantedLower = array_map('strtolower', $wanted);
+      $out = array_values(array_filter($out, function ($p) use ($wantedLower) {
+        $ps = strtolower((string)($p['payment_status'] ?? ''));
+        return in_array($ps, $wantedLower, true);
+      }));
+    }
   }
 
   echo json_encode($out, JSON_UNESCAPED_UNICODE);
